@@ -8,6 +8,9 @@ s3fs==2024.12.0
 minio==7.2.12
 pyarrow==18.1.0
 dvc[s3]==3.59.0
+# pin: pathspec 1.x drops the internal _DIR_MARK symbol that dvc 3.59 imports,
+# which breaks `dvc init/add`. 0.12.x is the last compatible line.
+pathspec==0.12.1
 
 # experiment tracking (client used from notebooks; servers live in later phases)
 mlflow==2.19.0
@@ -24,5 +27,9 @@ prometheus-client==0.21.1
 redis==5.2.1
 aim==3.25.0
 
-# NOTE: zenml (Phase 3) client is installed in its own phase to keep this base
-# image build fast and conflict-free.
+# orchestration (Phase 3) — pinned to match the zenml-server image tag.
+# Core coexists cleanly with mlflow/dvc/aim; these two are the only extra deps
+# the mlflow + s3 integrations need (our mlflow/s3fs/boto3 already satisfy the rest).
+zenml==0.96.3
+python-rapidjson<1.15
+aws-profile-manager
