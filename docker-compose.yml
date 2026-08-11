@@ -22,6 +22,8 @@ volumes:
   promdata:
   grafanadata:
   aimrepo:
+  labelstudio:
+  zenml:
 
 # --- reusable label anchors -------------------------------------------------
 x-openml-labels: &default-labels
@@ -170,6 +172,8 @@ services:
       PROMETHEUS_PORT: ${PROMETHEUS_PORT:-9090}
       CADVISOR_PORT: ${CADVISOR_PORT:-8082}
       PUSHGATEWAY_PORT: ${PUSHGATEWAY_PORT:-9091}
+      LABELSTUDIO_PORT: ${LABELSTUDIO_PORT:-8081}
+      ZENML_PORT: ${ZENML_PORT:-8237}
     ports:
       - "${BIND_HOST:-127.0.0.1}:${DASHBOARD_PORT:-8080}:8080"
     volumes:
@@ -224,6 +228,9 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       OPENML_PUSHGATEWAY_URL: http://pushgateway:9091
       OPENML_AIM_REPO: aim://aim:53800
+      # ZenML client -> server (Phase 3). Only used when you run zenml/pipelines;
+      # the Pipelines stack must be on. Server uses NO_AUTH (localhost only).
+      ZENML_STORE_URL: http://zenml:8080
     ports:
       - "${BIND_HOST:-127.0.0.1}:${JUPYTER_PORT:-8888}:8888"
     volumes:
@@ -239,6 +246,95 @@ services:
       <<: *default-labels
       openml.stack: "develop"
       openml.service: "jupyter"
+
+  # ==========================================================================
+  # LABEL  (profile: label)  — SageMaker Ground Truth / Vertex Data Labeling
+  # ==========================================================================
+
+  label-studio:
+    image: heartexlabs/label-studio:1.13.1
+    container_name: openml-label-studio
+    profiles: ["label"]
+    restart: unless-stopped
+    mem_limit: ${LABELSTUDIO_MEM_LIMIT:-2g}
+    mem_reservation: 256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      # --- Postgres backend (db 'labelstudio' created by db-init) ---
+      DJANGO_DB: default
+      POSTGRE_NAME: labelstudio
+      POSTGRE_USER: ${POSTGRES_USER:-openml}
+      POSTGRE_PASSWORD: ${POSTGRES_PASSWORD:-openml}
+      POSTGRE_HOST: postgres
+      POSTGRE_PORT: "5432"
+      # --- data + local-files serving (shared with Jupyter via ./workspace) ---
+      LABEL_STUDIO_BASE_DATA_DIR: /label-studio/data
+      LOCAL_FILES_SERVING_ENABLED: "true"
+      LOCAL_FILES_DOCUMENT_ROOT: /label-studio/files
+      # --- browser-facing host so generated links resolve ---
+      LABEL_STUDIO_HOST: http://localhost:${LABELSTUDIO_PORT:-8081}
+      # --- auto-create an admin on first boot (reproducible) ---
+      LABEL_STUDIO_USERNAME: ${LABELSTUDIO_USERNAME:-admin@openml.local}
+      LABEL_STUDIO_PASSWORD: ${LABELSTUDIO_PASSWORD:-openml-admin}
+      # don't phone home
+      COLLECT_ANALYTICS: "false"
+      # S3/MinIO creds available for users who prefer cloud source/target storage
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${LABELSTUDIO_PORT:-8081}:8080"
+    volumes:
+      - labelstudio:/label-studio/data
+      - ./workspace:/label-studio/files
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)\""]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 120s     # first boot runs DB migrations
+    labels:
+      <<: *default-labels
+      openml.stack: "label"
+      openml.service: "label-studio"
+
+  # ==========================================================================
+  # PIPELINE  (profile: pipeline)  — SageMaker Pipelines / Vertex Pipelines
+  # ==========================================================================
+
+  zenml:
+    build:
+      context: ./zenml
+    image: openml/zenml-server:latest
+    container_name: openml-zenml
+    profiles: ["pipeline"]
+    restart: unless-stopped
+    mem_limit: ${ZENML_MEM_LIMIT:-1g}
+    mem_reservation: 256m
+    environment:
+      # local personal server — no auth so the Jupyter client connects with just
+      # the store URL (localhost-bound; do not expose this port).
+      ZENML_SERVER_AUTH_SCHEME: NO_AUTH
+      ZENML_ANALYTICS_OPT_IN: "false"
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${ZENML_PORT:-8237}:8080"
+    volumes:
+      - zenml:/zenml/.zenconfig
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)\""]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 120s     # first boot runs Alembic migrations
+    labels:
+      <<: *default-labels
+      openml.stack: "pipeline"
+      openml.service: "zenml"
 
   # ==========================================================================
   # TRACK  (profile: track)  — SageMaker Experiments / Vertex Experiments

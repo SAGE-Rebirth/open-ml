@@ -52,6 +52,32 @@ Turn on `track` + `monitor`, then run `notebooks/01_training_telemetry.ipynb` �
 streams live loss/accuracy/lr to Grafana's *ML Training* dashboard, logs to MLflow +
 Aim, and registers a model. The one-line helper is `notebooks/openml_telemetry.py`.
 
+**Phase 2 — data & labeling** (`label` stack)
+
+| Service | Role | URL |
+|---|---|---|
+| **Label Studio** | image/text annotation, Postgres-backed | http://localhost:8081 |
+| **DVC** | dataset versioning with a MinIO remote | CLI in Jupyter |
+
+Turn on `label` (login `admin@openml.local` / `openml-admin`), then run
+`notebooks/02_labeling_and_dvc.ipynb` — it generates a sample image set into the
+shared `workspace/`, labels config for Label Studio, and versions the dataset to
+MinIO with DVC. Label Studio serves images from the **shared `workspace` volume**
+(Local Storage), so no S3 presigned-URL setup is needed — see
+[`docs/labeling.md`](docs/labeling.md) for the MinIO-storage alternative.
+
+**Phase 3 — pipelines** (`pipeline` stack)
+
+| Service | Role | URL |
+|---|---|---|
+| **ZenML** | pipeline orchestration + pluggable stack components | http://localhost:8237 |
+
+Turn on `pipeline` (+ `track` for MLflow), then run `notebooks/03_pipeline.ipynb` —
+it registers a ZenML **stack** (MinIO S3 artifact store + MLflow tracker/registry) and
+runs `ingest → preprocess → train → evaluate → register`. Steps + lineage appear in the
+ZenML dashboard, metrics + the model in MLflow, artifacts in MinIO. ZenML makes trackers
+and deployers swappable — see [`docs/pipelines.md`](docs/pipelines.md).
+
 ## Common commands
 
 ```bash
