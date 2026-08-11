@@ -1,0 +1,22 @@
+# Local env / secrets
+.env
+docker-compose.override.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Data & artifacts (kept in MinIO / DVC, not git)
+workspace/
+notebooks/**/data/
+*.log
+
+# DVC (added in Phase 2)
+/.dvc/cache
+/.dvc/tmp
+
+# OS
+.DS_Store

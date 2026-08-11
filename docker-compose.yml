@@ -1,0 +1,433 @@
+# ============================================================================
+# OpenML — a personal, self-hosted ML platform (SageMaker/Vertex-at-home)
+#
+# Services are grouped by Compose PROFILES. The control-dashboard turns each
+# stack on/off. "core" services carry no profile, so they always start with
+# `docker compose up -d`. Everything else is started on demand by naming the
+# service explicitly (e.g. `docker compose up -d jupyter`) and stopped with
+# `docker compose stop jupyter`.
+#
+#   PHASE 0 (this file): core + develop
+#   Later phases append: track, monitor, label, pipeline, cicd, serve, vision
+# ============================================================================
+
+networks:
+  openml_net:
+    name: openml_net
+    driver: bridge
+
+volumes:
+  pgdata:
+  miniodata:
+  promdata:
+  grafanadata:
+  aimrepo:
+
+# --- reusable label anchors -------------------------------------------------
+x-openml-labels: &default-labels
+  openml.managed: "true"
+
+services:
+
+  # ==========================================================================
+  # CORE  (always on — no profile)
+  # ==========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: openml-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openml}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openml}
+      POSTGRES_DB: ${POSTGRES_DB:-openml}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openml} -d ${POSTGRES_DB:-openml}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      <<: *default-labels
+      openml.stack: "core"
+      openml.service: "postgres"
+
+  minio:
+    image: minio/minio:latest
+    container_name: openml-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${BIND_HOST:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      <<: *default-labels
+      openml.stack: "core"
+      openml.service: "minio"
+
+  # one-shot: create buckets, then exit
+  minio-init:
+    image: minio/mc:latest
+    container_name: openml-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      for b in $${MINIO_BUCKETS}; do mc mb -p local/$$b || true; done &&
+      echo 'OpenML: MinIO buckets ready:' $${MINIO_BUCKETS} &&
+      exit 0"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKETS: ${MINIO_BUCKETS:-mlflow datasets models}
+    networks: [openml_net]
+    restart: "no"
+    labels:
+      <<: *default-labels
+      openml.stack: "core"
+      openml.service: "minio-init"
+
+  # one-shot: create per-service databases (idempotent), then exit
+  db-init:
+    image: postgres:16-alpine
+    container_name: openml-db-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-openml}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-openml}
+    entrypoint: >
+      /bin/sh -c "
+      for db in mlflow labelstudio zenml gitea; do
+        psql -tc \"SELECT 1 FROM pg_database WHERE datname='$$db'\" | grep -q 1 ||
+        psql -c \"CREATE DATABASE \\\"$$db\\\"\";
+      done;
+      echo 'OpenML: databases ready'; exit 0"
+    networks: [openml_net]
+    restart: "no"
+    labels:
+      <<: *default-labels
+      openml.stack: "core"
+      openml.service: "db-init"
+
+  redis:
+    image: redis:7-alpine
+    container_name: openml-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    labels:
+      <<: *default-labels
+      openml.stack: "core"
+      openml.service: "redis"
+
+  control-dashboard:
+    build:
+      context: ./control-dashboard
+    image: openml/control-dashboard:latest
+    container_name: openml-dashboard
+    restart: unless-stopped
+    environment:
+      OPENML_PROJECT_DIR: ${OPENML_PROJECT_DIR:-/project}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-openml}
+      OPENML_VM_MEM_GB: ${OPENML_VM_MEM_GB:-12}
+      # port map passed through so the UI can build clickable links
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+      JUPYTER_PORT: ${JUPYTER_PORT:-8888}
+      MINIO_CONSOLE_PORT: ${MINIO_CONSOLE_PORT:-9001}
+      MINIO_API_PORT: ${MINIO_API_PORT:-9000}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      MLFLOW_PORT: ${MLFLOW_PORT:-5000}
+      AIM_PORT: ${AIM_PORT:-43800}
+      GRAFANA_PORT: ${GRAFANA_PORT:-3000}
+      PROMETHEUS_PORT: ${PROMETHEUS_PORT:-9090}
+      CADVISOR_PORT: ${CADVISOR_PORT:-8082}
+      PUSHGATEWAY_PORT: ${PUSHGATEWAY_PORT:-9091}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${DASHBOARD_PORT:-8080}:8080"
+    volumes:
+      # docker socket -> control the daemon
+      - /var/run/docker.sock:/var/run/docker.sock
+      # mount the project at the SAME absolute path so `docker compose` run
+      # from inside resolves ./bind mounts and build contexts identically
+      - ${OPENML_PROJECT_DIR:-.}:${OPENML_PROJECT_DIR:-/project}
+    # NOTE: no `working_dir` here — the app must run from its image WORKDIR
+    # (/srv) so `uvicorn app.main:app` resolves. Compose commands the dashboard
+    # issues set cwd=$OPENML_PROJECT_DIR explicitly (see app/docker_ctl.py).
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    labels:
+      <<: *default-labels
+      openml.stack: "core"
+      openml.service: "control-dashboard"
+
+  # ==========================================================================
+  # DEVELOP  (profile: develop)  — SageMaker Studio / Vertex Workbench
+  # ==========================================================================
+
+  jupyter:
+    build:
+      context: ./jupyter
+    image: openml/jupyter:latest
+    container_name: openml-jupyter
+    profiles: ["develop"]
+    restart: unless-stopped
+    # Cap the notebook container so a runaway job kills only its own kernel
+    # instead of OOMing the whole VM and taking down core services.
+    # Heavy / GPU training should run natively on the host (see docs).
+    mem_limit: ${JUPYTER_MEM_LIMIT:-4g}
+    mem_reservation: 512m
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-openml}
+      # S3 / MinIO credentials so boto3, s3fs, dvc, mlflow "just work"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      # convenient connection strings for notebooks
+      OPENML_S3_ENDPOINT: http://minio:9000
+      OPENML_PG_DSN: postgresql://${POSTGRES_USER:-openml}:${POSTGRES_PASSWORD:-openml}@postgres:5432/${POSTGRES_DB:-openml}
+      OPENML_REDIS_URL: redis://redis:6379/0
+      # telemetry (Phase 1) — these resolve once the track/monitor stacks are up
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      OPENML_PUSHGATEWAY_URL: http://pushgateway:9091
+      OPENML_AIM_REPO: aim://aim:53800
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${JUPYTER_PORT:-8888}:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work/notebooks
+      - ./workspace:/home/jovyan/work/workspace
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8888/api || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    labels:
+      <<: *default-labels
+      openml.stack: "develop"
+      openml.service: "jupyter"
+
+  # ==========================================================================
+  # TRACK  (profile: track)  — SageMaker Experiments / Vertex Experiments
+  # ==========================================================================
+
+  mlflow:
+    build:
+      context: ./mlflow
+    image: openml/mlflow:latest
+    container_name: openml-mlflow
+    profiles: ["track"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER:-openml}:${POSTGRES_PASSWORD:-openml}@postgres:5432/mlflow
+      --default-artifact-root s3://mlflow/
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${MLFLOW_PORT:-5000}:5000"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    labels:
+      <<: *default-labels
+      openml.stack: "track"
+      openml.service: "mlflow"
+
+  aim:
+    image: aimstack/aim:3.25.0
+    container_name: openml-aim
+    profiles: ["track"]
+    restart: unless-stopped
+    # run the remote tracking server (53800) + the web UI (43800) on one repo
+    entrypoint: >
+      /bin/sh -c "aim init --repo /aim 2>/dev/null || true;
+      aim server --repo /aim --host 0.0.0.0 --port 53800 &
+      exec aim up --repo /aim --host 0.0.0.0 --port 43800"
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${AIM_PORT:-43800}:43800"
+      - "${BIND_HOST:-127.0.0.1}:${AIM_SERVER_PORT:-53800}:53800"
+    volumes:
+      - aimrepo:/aim
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:43800/').status==200 else 1)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    labels:
+      <<: *default-labels
+      openml.stack: "track"
+      openml.service: "aim"
+
+  # ==========================================================================
+  # MONITOR  (profile: monitor)  — SageMaker Model Monitor / infra metrics
+  # ==========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: openml-prometheus
+    profiles: ["monitor"]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/-/healthy || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 4
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "prometheus"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: openml-grafana
+    profiles: ["monitor"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: dark
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 4
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "grafana"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: openml-cadvisor
+    profiles: ["monitor"]
+    restart: unless-stopped
+    privileged: true
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=5s
+      - --store_container_labels=false
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      # explicit socket bind — Docker Desktop resolves THIS exact path to the
+      # real daemon socket, so cAdvisor can resolve container name/image labels
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${CADVISOR_PORT:-8082}:8080"
+    networks: [openml_net]
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "cadvisor"
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: openml-node-exporter
+    profiles: ["monitor"]
+    restart: unless-stopped
+    # Docker Desktop's VM rejects rslave propagation on `/`; mount /proc and
+    # /sys read-only instead — enough for CPU/memory of the Docker VM (the
+    # relevant "host" for these containers on macOS).
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${NODE_EXPORTER_PORT:-9100}:9100"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9100/metrics || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 4
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "node-exporter"
+
+  pushgateway:
+    image: prom/pushgateway:v1.10.0
+    container_name: openml-pushgateway
+    profiles: ["monitor"]
+    restart: unless-stopped
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PUSHGATEWAY_PORT:-9091}:9091"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9091/-/healthy || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 4
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "pushgateway"
