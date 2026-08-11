@@ -1,0 +1,60 @@
+{
+  "uid": "openml-training",
+  "title": "ML Training",
+  "tags": ["openml"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "run",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+        "query": "label_values(openml_train_loss, run)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {"text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Training loss",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_train_loss{run=~\"$run\"}", "legendFormat": "{{run}}"}],
+      "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 8}}, "overrides": []}
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Accuracy",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_train_accuracy{run=~\"$run\"}", "legendFormat": "{{run}}"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 8}}, "overrides": []}
+    },
+    {
+      "id": 3, "type": "gauge", "title": "Latest loss",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_train_loss{run=~\"$run\"}", "legendFormat": "{{run}}"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Epoch",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_epoch{run=~\"$run\"}", "legendFormat": "{{run}}"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Learning rate",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_train_lr{run=~\"$run\"}", "legendFormat": "{{run}}"}],
+      "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "lineWidth": 2}}, "overrides": []}
+    }
+  ]
+}

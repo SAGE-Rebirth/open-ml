@@ -1,0 +1,39 @@
+# OpenML — Prometheus scrape config
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # per-container CPU/mem with name labels, from the control-dashboard exporter.
+  # This is the reliable source on Docker Desktop (cAdvisor can't resolve names
+  # in the macOS VM). On a Linux host, cAdvisor below adds richer metrics too.
+  - job_name: openml-containers
+    static_configs:
+      - targets: ["control-dashboard:8080"]
+
+  # container-level metrics (rich on Linux hosts; name labels absent on Docker
+  # Desktop for macOS — kept for portability / network & fs metrics)
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # host / Docker-VM level metrics
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # training/data/serving metrics pushed by notebooks & the inference service.
+  # honor_labels keeps the job/run labels the pushing code sets.
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+  # FastAPI inference service (Phase 5) — harmless until it exists
+  - job_name: inference
+    static_configs:
+      - targets: ["inference:8000"]

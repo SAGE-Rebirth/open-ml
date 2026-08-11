@@ -1,0 +1,58 @@
+{
+  "uid": "openml-host",
+  "title": "Host & Containers",
+  "tags": ["openml"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {"from": "now-30m", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Container CPU %",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_container_cpu_percent", "legendFormat": "{{service}}"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}}}, "overrides": []}
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Container memory",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_container_mem_bytes", "legendFormat": "{{service}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}}}, "overrides": []}
+    },
+    {
+      "id": 3, "type": "gauge", "title": "Docker-VM CPU busy %",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 4, "type": "gauge", "title": "Docker-VM memory used %",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 5, "type": "stat", "title": "OpenML containers running",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(openml_container_up)"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Docker-VM network RX/TX",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "sum(rate(node_network_receive_bytes_total{device!=\"lo\"}[1m]))", "legendFormat": "rx"},
+        {"refId": "B", "expr": "sum(rate(node_network_transmit_bytes_total{device!=\"lo\"}[1m]))", "legendFormat": "tx"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "Bps", "custom": {"drawStyle": "line", "lineWidth": 2}}, "overrides": []}
+    }
+  ]
+}

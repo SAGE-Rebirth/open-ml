@@ -1,0 +1,37 @@
+{
+  "uid": "openml-serving",
+  "title": "Serving",
+  "tags": ["openml"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {"from": "now-30m", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Requests / sec",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (path) (rate(openml_inference_requests_total[1m]))", "legendFormat": "{{path}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 8}}, "overrides": []}
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Latency p95 (s)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(openml_inference_latency_seconds_bucket[1m])))", "legendFormat": "p95"}],
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2}}, "overrides": []}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Error rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(openml_inference_errors_total[1m]))"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"}
+    },
+    {
+      "id": 4, "type": "text", "title": "About",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "options": {"mode": "markdown", "content": "These panels populate once the **Serve** stack (FastAPI, Phase 5) is running and exposing `/metrics`. Prometheus already scrapes `inference:8000`."}
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "uid": "openml-dataprep",
+  "title": "Data Prep",
+  "tags": ["openml"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Dataset rows",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_dataset_rows", "legendFormat": "{{dataset}}", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 2, "type": "bargauge", "title": "Class balance",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_class_count", "legendFormat": "class {{class}}", "instant": true}],
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "continuous-GrYlRd"}}, "overrides": []},
+      "options": {"orientation": "horizontal", "displayMode": "gradient", "reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 3, "type": "piechart", "title": "Split sizes",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_split_size", "legendFormat": "{{split}}", "instant": true}]
+    },
+    {
+      "id": 4, "type": "text", "title": "About",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 8},
+      "options": {"mode": "markdown", "content": "Metrics here are pushed from notebooks via `openml_telemetry.push_dataset_stats(...)`. See `notebooks/01_training_telemetry.ipynb`."}
+    }
+  ]
+}
