@@ -72,15 +72,21 @@ STACKS = [
     },
     {
         "key": "label", "title": "Label · Label Studio", "phase": 2,
-        "available": False, "always_on": False,
-        "description": "Data annotation backed by Postgres + MinIO.",
-        "services": ["label-studio"], "links": [],
+        "available": True, "always_on": False,
+        "description": "Data annotation backed by Postgres, serving images from your workspace.",
+        "services": ["label-studio"],
+        "links": [
+            {"label": "Label Studio", "url": link("LABELSTUDIO_PORT", "8081")},
+        ],
     },
     {
         "key": "pipeline", "title": "Pipelines · ZenML", "phase": 3,
-        "available": False, "always_on": False,
-        "description": "Orchestrate ingest → preprocess → train → evaluate → register.",
-        "services": ["zenml"], "links": [],
+        "available": True, "always_on": False,
+        "description": "Orchestrate ingest → preprocess → train → evaluate → register (pluggable stack).",
+        "services": ["zenml"],
+        "links": [
+            {"label": "ZenML", "url": link("ZENML_PORT", "8237")},
+        ],
     },
     {
         "key": "cicd", "title": "CI/CD · Gitea Actions", "phase": 4,
@@ -123,4 +129,6 @@ CONTAINER_NAME = {
     "cadvisor": "openml-cadvisor",
     "node-exporter": "openml-node-exporter",
     "pushgateway": "openml-pushgateway",
+    "label-studio": "openml-label-studio",
+    "zenml": "openml-zenml",
 }
