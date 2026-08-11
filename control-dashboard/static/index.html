@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenML Console</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#0b0e13; --card:#161b22; --card2:#1c2230; --line:#262c36;
+    --txt:#e6edf3; --muted:#8b98a9; --faint:#5b6673;
+    --accent:#4f8cff; --accent2:#a371f7;
+    --ok:#3fb950; --okdim:#1f6f37; --warn:#d29922; --bad:#f85149; --off:#5b6673;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 10px 30px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--txt);-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+
+  /* ---------- header ---------- */
+  header{position:sticky;top:0;z-index:20;background:var(--panel);
+         border-bottom:1px solid var(--line);padding:16px 28px}
+  .htop{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .logo{font-weight:700;font-size:19px;letter-spacing:.2px}
+  .logo b{background:linear-gradient(90deg,var(--accent),var(--accent2));
+          -webkit-background-clip:text;background-clip:text;color:transparent}
+  .tag{color:var(--muted);font-size:12.5px}
+  .spacer{flex:1}
+  .stats{display:flex;gap:22px;align-items:center}
+  .stat{text-align:right}
+  .stat b{font-size:16px;font-variant-numeric:tabular-nums}
+  .stat span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .budget{min-width:260px;max-width:420px;flex:1}
+  .budget .brow{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px}
+  .bar{height:9px;border-radius:6px;background:#20262f;overflow:hidden;border:1px solid var(--line)}
+  .bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--warn),var(--bad));
+         transition:width .5s ease}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .ldot{width:8px;height:8px;border-radius:50%}
+  .lop{font-family:ui-monospace,monospace;background:var(--card2);border:1px solid var(--line);
+       border-radius:5px;padding:0 5px;color:var(--txt)}
+
+  /* ---------- sections ---------- */
+  .section{padding:6px 28px 0}
+  .shead{display:flex;align-items:center;gap:10px;margin:20px 0 6px}
+  .shead h2{font-size:13px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0}
+  .shead .rule{flex:1;height:1px;background:var(--line)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+        gap:16px;align-items:start;padding:8px 0 4px}
+
+  /* ---------- card ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        box-shadow:var(--shadow);overflow:hidden}
+  .card.on{border-color:#2b5138}
+  .chead{padding:15px 16px 12px;display:flex;align-items:flex-start;gap:12px}
+  .ctitlewrap{flex:1;min-width:0}
+  .ctitle{font-weight:650;font-size:15px;display:flex;align-items:center;gap:8px}
+  .cdesc{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .phasechip{font-size:10px;font-weight:600;letter-spacing:.4px;color:var(--faint);
+             border:1px solid var(--line);border-radius:999px;padding:1px 7px;white-space:nowrap;text-transform:uppercase}
+
+  /* labeled toggle */
+  .tgwrap{display:flex;flex-direction:column;align-items:center;gap:5px;flex:none}
+  .tstate{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+  .tstate.on{color:var(--ok)} .tstate.busy{color:var(--warn)}
+  .toggle{border:0;cursor:pointer;border-radius:999px;width:54px;height:28px;
+          background:#333a45;position:relative;transition:background .2s;flex:none}
+  .toggle:disabled{cursor:default}
+  .toggle>span{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+               background:#eaeef3;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .toggle.on{background:var(--ok)} .toggle.on>span{left:29px}
+  .toggle.busy{background:var(--warn)}
+  .lockpill{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+            color:var(--ok);border:1px solid var(--okdim);border-radius:999px;padding:4px 9px;white-space:nowrap}
+
+  /* service rows */
+  .svcs{border-top:1px solid var(--line)}
+  .svc{padding:9px 16px;display:grid;grid-template-columns:14px 1fr auto auto;align-items:center;gap:10px}
+  .svc + .svc{border-top:1px solid #1d222c}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--off);box-shadow:0 0 0 3px rgba(0,0,0,.25)}
+  .dot.running{background:var(--ok)} .dot.starting{background:var(--warn);animation:pulse 1.2s infinite}
+  .dot.unhealthy,.dot.exited,.dot.dead,.dot.restarting{background:var(--bad)}
+  @keyframes pulse{50%{opacity:.35}}
+  .sname{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .smeta{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .opbox{display:flex;gap:5px;justify-content:flex-end;min-width:56px}
+  .op{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+      font-size:12px;color:var(--muted);cursor:pointer;border:1px solid var(--line);
+      border-radius:7px;background:var(--card2);transition:.15s}
+  .op:hover{color:var(--txt);border-color:var(--accent);background:#20293a}
+  .op.stop:hover{border-color:var(--bad);color:var(--bad)}
+  .op.locked{cursor:default;opacity:.5;border-style:dashed}
+  .op.locked:hover{color:var(--muted);border-color:var(--line);background:var(--card2)}
+
+  /* footer of card */
+  .cfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line)}
+  .count{font-size:11.5px;color:var(--muted);font-weight:600}
+  .count b{color:var(--ok)}
+  .links{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .link{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--accent);
+        border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:transparent;transition:.15s}
+  .link:hover{border-color:var(--accent);background:#132033}
+
+  /* roadmap (soon) cards */
+  .card.soon{opacity:.72}
+  .card.soon .chead{padding-bottom:14px}
+  .soonfoot{padding:11px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint);
+            display:flex;justify-content:space-between;gap:10px}
+  .soonfoot code{font-family:ui-monospace,monospace;color:var(--muted)}
+
+  footer{color:var(--muted);font-size:12px;padding:18px 28px 34px;display:flex;gap:10px;align-items:center}
+  .livedot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:pulse 2s infinite}
+
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#0b0e13;
+         border:1px solid var(--line);border-radius:10px;padding:11px 16px;max-width:82vw;
+         opacity:0;transition:opacity .2s;pointer-events:none;font-size:13px;white-space:pre-wrap;
+         box-shadow:var(--shadow);z-index:50}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="htop">
+    <div>
+      <div class="logo"><b>OpenML</b> Console</div>
+      <div class="tag">personal ML platform · localhost</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="stats">
+      <div class="stat"><b id="s-stacks">–</b><span>stacks on</span></div>
+      <div class="stat"><b id="s-svcs">–</b><span>services up</span></div>
+    </div>
+    <div class="budget">
+      <div class="brow"><span>Container memory</span><span id="memlabel">–</span></div>
+      <div class="bar"><i id="membar"></i></div>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i class="ldot" style="background:var(--ok)"></i> running</span>
+    <span><i class="ldot" style="background:var(--warn)"></i> starting</span>
+    <span><i class="ldot" style="background:var(--bad)"></i> stopped / unhealthy</span>
+    <span><i class="ldot" style="background:var(--off)"></i> not created</span>
+    <span><b class="lop">↻</b> restart service</span>
+    <span><b class="lop">■</b> stop &nbsp; <b class="lop">▶</b> start</span>
+    <span>toggle a whole stack with the switch on each card</span>
+  </div>
+</header>
+
+<div id="app"></div>
+<footer><span class="livedot"></span><span id="foot">connecting…</span></footer>
+<div id="toast"></div>
+
+<script>
+const fmt = b => {
+  if(!b) return "0 MB";
+  const u=["B","KB","MB","GB","TB"]; let i=0; while(b>=1024&&i<u.length-1){b/=1024;i++;}
+  return b.toFixed(i>=2?1:0)+" "+u[i];
+};
+const toast = (m)=>{const t=document.getElementById("toast");t.textContent=m;
+  t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),3600);};
+
+let MODEL=null;
+const PROTECTED=new Set();   // never controllable (the console itself)
+const CORE_SVC=new Set();    // always-on infra: restart allowed, stop hidden
+const STACK_OF={};
+
+async function post(url){
+  try{
+    const r=await fetch(url,{method:"POST"});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){ toast("⚠ "+(j.detail||r.statusText)); return false; }
+    if(j.log && !j.ok){ toast("⚠ "+j.log.split("\n").slice(-3).join("\n")); return false; }
+    return true;
+  }catch(e){ toast("⚠ "+e.message); return false; }
+}
+
+async function stackToggle(key,on){
+  const tg=document.querySelector(`[data-toggle="${key}"]`);
+  const st=document.querySelector(`[data-tstate="${key}"]`);
+  if(tg){ tg.classList.add("busy"); tg.disabled=true; }
+  if(st){ st.textContent=on?"Starting":"Stopping"; st.className="tstate busy"; }
+  toast(on?`Starting ${key}… (first run may build images)`:`Stopping ${key}…`);
+  const ok=await post(`/api/stack/${key}/${on?"up":"down"}`);
+  if(!ok && tg){ tg.classList.remove("busy"); tg.disabled=false; }
+}
+async function svcOp(name,action){ toast(`${action} ${name}…`); await post(`/api/service/${name}/${action}`); }
+
+function dotClass(status,health){
+  if(status==="running") return health==="unhealthy"?"unhealthy":(health==="starting"?"starting":"running");
+  if(status==="absent"||status==="created") return "";
+  return status;
+}
+
+function renderStructure(model){
+  PROTECTED.clear();
+  const active=[], soon=[];
+  for(const s of model.stacks){
+    for(const v of s.services){
+      STACK_OF[v.name]=s.key;
+      if(v.protected) PROTECTED.add(v.name);
+      if(s.always_on && !v.protected) CORE_SVC.add(v.name);
+    }
+    (s.available?active:soon).push(s);
+  }
+  let html = `<div class="section">
+    <div class="shead"><h2>Active stacks</h2><div class="rule"></div></div>
+    <div class="grid">${active.map(activeCard).join("")}</div>
+    <div class="shead"><h2>Roadmap · coming in later phases</h2><div class="rule"></div></div>
+    <div class="grid">${soon.map(soonCard).join("")}</div>
+  </div>`;
+  document.getElementById("app").innerHTML=html;
+  // wire toggles
+  for(const s of active){
+    if(s.always_on) continue;
+    const tg=document.querySelector(`[data-toggle="${s.key}"]`);
+    if(tg) tg.onclick=()=>{ const on=tg.classList.contains("on"); stackToggle(s.key,!on); };
+  }
+}
+
+function activeCard(s){
+  const svcRows = s.services.map(v=>`
+    <div class="svc" data-svc="${v.name}">
+      <span class="dot"></span>
+      <span class="sname">${v.name}</span>
+      <span class="smeta">–</span>
+      <span class="opbox" data-ops="${v.name}"></span>
+    </div>`).join("");
+  const links = s.links.map(l=>`<a class="link" href="${l.url}" target="_blank" rel="noopener">${l.label} ↗</a>`).join("");
+  const control = s.always_on
+    ? `<div class="tgwrap"><span class="lockpill">Always on</span></div>`
+    : `<div class="tgwrap">
+         <span class="tstate" data-tstate="${s.key}">–</span>
+         <button class="toggle" data-toggle="${s.key}" title="Turn this stack on or off"><span></span></button>
+       </div>`;
+  return `<div class="card" data-key="${s.key}">
+    <div class="chead">
+      <div class="ctitlewrap">
+        <div class="ctitle">${s.title} <span class="phasechip">phase ${s.phase}</span></div>
+        <div class="cdesc">${s.description}</div>
+      </div>
+      ${control}
+    </div>
+    <div class="svcs">${svcRows}</div>
+    <div class="cfoot">
+      <span class="count" data-running="${s.key}">0/${s.total} running</span>
+      ${links?`<span class="links">${links}</span>`:""}
+    </div>
+  </div>`;
+}
+
+function soonCard(s){
+  return `<div class="card soon">
+    <div class="chead">
+      <div class="ctitlewrap">
+        <div class="ctitle">${s.title} <span class="phasechip">phase ${s.phase}</span></div>
+        <div class="cdesc">${s.description}</div>
+      </div>
+    </div>
+    <div class="soonfoot"><span>Arrives in phase ${s.phase}</span><span><code>${s.services.join(", ")}</code></span></div>
+  </div>`;
+}
+
+function opHtml(name,status){
+  if(PROTECTED.has(name))
+    return `<span class="op locked" title="Runs this console — manage from a terminal">🔒</span>`;
+  if(status==="absent") return "";
+  const restart=`<span class="op" title="Restart ${name}" onclick="svcOp('${name}','restart')">↻</span>`;
+  // core infra can be restarted but not stopped from the UI (stopping it breaks
+  // everything downstream). Use the terminal if you really need it down.
+  if(CORE_SVC.has(name))
+    return restart+`<span class="op locked" title="Core service — always on (restart only)">🔒</span>`;
+  const isRun=status==="running";
+  return restart+
+    `<span class="op ${isRun?'stop':''}" title="${isRun?'Stop':'Start'} ${name}" onclick="svcOp('${name}','${isRun?'stop':'start'}')">${isRun?'■':'▶'}</span>`;
+}
+
+function applyLive(d){
+  const vm=d.vm_mem_bytes, used=d.used_mem_bytes, pct=vm?Math.min(100,used/vm*100):0;
+  document.getElementById("membar").style.width=pct+"%";
+  document.getElementById("memlabel").textContent=`${fmt(used)} / ${vm?fmt(vm):"?"}  (${pct.toFixed(0)}%)`;
+
+  const svcs=d.services||{};
+  const running={}; let svcUp=0;
+  document.querySelectorAll(".svc").forEach(row=>{
+    const name=row.getAttribute("data-svc");
+    const info=svcs[name]; const status=info?info.status:"absent"; const health=info?info.health:null;
+    row.querySelector(".dot").className="dot "+dotClass(status,health);
+    row.querySelector(".smeta").textContent = status==="running"
+      ? `${(info.cpu_pct||0).toFixed(0)}% cpu · ${fmt(info.mem_bytes||0)}`
+      : (status==="absent"?"not created":status);
+    row.querySelector(".opbox").innerHTML=opHtml(name,status);
+    const key=STACK_OF[name];
+    if(key){ running[key]=(running[key]||0)+(status==="running"?1:0); }
+    if(status==="running") svcUp++;
+  });
+
+  let stacksOn=0;
+  (MODEL?MODEL.stacks:[]).forEach(s=>{
+    const up=running[s.key]||0; if(up>0) stacksOn++;
+    const badge=document.querySelector(`[data-running="${s.key}"]`);
+    if(badge) badge.innerHTML=`<b>${up}</b>/${s.total} running`;
+    const card=document.querySelector(`.card[data-key="${s.key}"]`);
+    if(card) card.classList.toggle("on", up>0 && !s.always_on);
+    if(s.always_on) return;
+    const tg=document.querySelector(`[data-toggle="${s.key}"]`);
+    const st=document.querySelector(`[data-tstate="${s.key}"]`);
+    if(tg){ tg.classList.toggle("on",up>0); tg.classList.remove("busy"); tg.disabled=false; }
+    if(st){ st.textContent=up>0?"Running":"Stopped"; st.className="tstate"+(up>0?" on":""); }
+  });
+
+  document.getElementById("s-stacks").textContent=stacksOn;
+  document.getElementById("s-svcs").textContent=svcUp;
+  const t=new Date().toLocaleTimeString();
+  document.getElementById("foot").textContent=`live · ${stacksOn} stack(s) on · updated ${t}`;
+}
+
+async function init(){
+  try{
+    const r=await fetch("/api/stacks"); MODEL=await r.json();
+    renderStructure(MODEL); applyLive(MODEL);
+  }catch(e){ document.getElementById("foot").textContent="⚠ cannot reach backend"; return; }
+  connectSSE();
+}
+function connectSSE(){
+  const es=new EventSource("/api/stream/stats");
+  es.onmessage=(ev)=>{ try{ applyLive(JSON.parse(ev.data)); }catch{} };
+  es.onerror=()=>{ document.getElementById("foot").textContent="⚠ reconnecting…"; };
+}
+init();
+</script>
+</body>
+</html>

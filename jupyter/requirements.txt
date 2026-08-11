@@ -1,0 +1,28 @@
+# OpenML JupyterLab — client libraries.
+# Base image (scipy-notebook) already provides numpy, pandas, scikit-learn,
+# matplotlib, scipy, seaborn, jupyterlab. We add the ML/MLOps clients here.
+
+# storage / data
+boto3==1.35.90
+s3fs==2024.12.0
+minio==7.2.12
+pyarrow==18.1.0
+dvc[s3]==3.59.0
+
+# experiment tracking (client used from notebooks; servers live in later phases)
+mlflow==2.19.0
+
+# deep learning (CPU wheels on arm64; GPU-heavy work runs natively on host)
+torch==2.5.1
+torchvision==0.20.1
+
+# vision
+opencv-python-headless==4.10.0.84
+
+# telemetry / messaging
+prometheus-client==0.21.1
+redis==5.2.1
+aim==3.25.0
+
+# NOTE: zenml (Phase 3) client is installed in its own phase to keep this base
+# image build fast and conflict-free.
