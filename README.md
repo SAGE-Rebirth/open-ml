@@ -78,6 +78,17 @@ runs `ingest → preprocess → train → evaluate → register`. Steps + lineag
 ZenML dashboard, metrics + the model in MLflow, artifacts in MinIO. ZenML makes trackers
 and deployers swappable — see [`docs/pipelines.md`](docs/pipelines.md).
 
+**Phase 4 — CI/CD** (`cicd` stack)
+
+| Service | Role | URL |
+|---|---|---|
+| **Gitea** | local git + Actions (train-on-push) | http://localhost:3001 |
+| **act-runner** | runs Actions jobs on the openml network | — |
+
+Turn on `cicd` (login `openml` / `openml-admin`). Push `cicd/demo-repo/` to a Gitea
+repo and its `.gitea/workflows/train.yml` trains and **registers `ci-model` to MLflow**
+automatically. See [`docs/cicd.md`](docs/cicd.md).
+
 ## Common commands
 
 ```bash
