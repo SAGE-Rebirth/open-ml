@@ -50,6 +50,13 @@ logs: ## Tail logs (usage: make logs S=jupyter)
 config: $(ENV_FILE) ## Validate & render the merged compose config
 	docker compose --profile "*" config
 
+.PHONY: prune
+prune: ## Reclaim disk: dangling images, stopped junk, unused build cache
+	docker builder prune -f
+	docker image prune -f
+	docker volume prune -f
+	@echo "reclaimed — run 'docker system df' to check"
+
 .PHONY: nuke
 nuke: ## DANGER: remove containers AND volumes (wipes all data)
 	docker compose --profile "*" down -v

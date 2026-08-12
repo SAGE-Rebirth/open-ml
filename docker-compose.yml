@@ -19,6 +19,8 @@ networks:
 volumes:
   pgdata:
   miniodata:
+  redisdata:
+  dbinitscratch:
   promdata:
   grafanadata:
   aimrepo:
@@ -42,6 +44,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: openml-postgres
+    mem_limit: 1g
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-openml}
@@ -65,6 +68,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: openml-minio
+    mem_limit: 2g
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -130,6 +134,10 @@ services:
       echo 'OpenML: databases ready'; exit 0"
     networks: [openml_net]
     restart: "no"
+    # only a psql client — a named volume at the postgres image's VOLUME path
+    # keeps it compose-managed instead of an orphan anonymous volume
+    volumes:
+      - dbinitscratch:/var/lib/postgresql/data
     labels:
       <<: *default-labels
       openml.stack: "core"
@@ -138,10 +146,15 @@ services:
   redis:
     image: redis:7-alpine
     container_name: openml-redis
+    mem_limit: 256m
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
       - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    # redis is a pure cache (no persistence) — a named volume at its image VOLUME
+    # path keeps it compose-managed instead of an orphan anonymous volume
+    volumes:
+      - redisdata:/data
     networks: [openml_net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -158,6 +171,7 @@ services:
       context: ./control-dashboard
     image: openml/control-dashboard:latest
     container_name: openml-dashboard
+    mem_limit: 512m
     restart: unless-stopped
     environment:
       OPENML_PROJECT_DIR: ${OPENML_PROJECT_DIR:-/project}
@@ -489,6 +503,7 @@ services:
       context: ./mlflow
     image: openml/mlflow:latest
     container_name: openml-mlflow
+    mem_limit: 1g
     profiles: ["track"]
     restart: unless-stopped
     depends_on:
@@ -521,6 +536,7 @@ services:
   aim:
     image: aimstack/aim:3.25.0
     container_name: openml-aim
+    mem_limit: 1g
     profiles: ["track"]
     restart: unless-stopped
     # run the remote tracking server (53800) + the web UI (43800) on one repo
@@ -551,6 +567,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: openml-prometheus
+    mem_limit: 1g
     profiles: ["monitor"]
     restart: unless-stopped
     command:
@@ -575,6 +592,7 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: openml-grafana
+    mem_limit: 512m
     profiles: ["monitor"]
     restart: unless-stopped
     environment:
@@ -603,6 +621,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: openml-cadvisor
+    mem_limit: 256m
     profiles: ["monitor"]
     restart: unless-stopped
     privileged: true
@@ -629,6 +648,7 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: openml-node-exporter
+    mem_limit: 128m
     profiles: ["monitor"]
     restart: unless-stopped
     # Docker Desktop's VM rejects rslave propagation on `/`; mount /proc and
@@ -657,6 +677,7 @@ services:
   pushgateway:
     image: prom/pushgateway:v1.10.0
     container_name: openml-pushgateway
+    mem_limit: 128m
     profiles: ["monitor"]
     restart: unless-stopped
     ports:
