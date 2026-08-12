@@ -91,11 +91,11 @@ automatically. See [`docs/cicd.md`](docs/cicd.md).
 
 ## Secrets Vault
 
-The console has a built-in **🔐 Secrets Vault** — envelope-encrypted (AES-256-GCM),
-unlocked by a passphrase / access codes / a one-time recovery key (so you're never
-locked out). Secrets are scoped **local** (this project) or **global** (all your
-projects), and any project can read them via the pure-stdlib `cli/openml-secret`.
-See [`docs/vault.md`](docs/vault.md).
+The console has a built-in **🔐 Secrets Vault** — **multiple** named vaults, each
+envelope-encrypted (AES-256-GCM) and unlocked by a passphrase / access codes / a
+one-time recovery key (so you're never locked out). Inside a vault, secrets are
+scoped **global** (all projects) or to a **project name**, and any project can
+read them via the pure-stdlib `cli/openml-secret`. See [`docs/vault.md`](docs/vault.md).
 
 ## Common commands
 

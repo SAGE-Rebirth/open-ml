@@ -143,6 +143,10 @@ docs/                      # architecture, macos-constraints, reliability, label
   act-runner registers via **env vars** (`GITEA_RUNNER_REGISTRATION_TOKEN_FILE`),
   not `--instance` flags. Job containers join `openml_net` via the runner config.
 - **DVC 3.59** breaks on `pathspec` 1.x → pinned `pathspec==0.12.1`.
+- **sklearn 1.6 vs MLflow autolog** — the Jupyter base ships scikit-learn 1.6.0;
+  MLflow 2.19 autolog prints an "unsupported version (≤1.5.2)" *warning* but works.
+  Left as-is on purpose (downgrading the base image risks conflicts); the
+  `ci-runner` image pins 1.5.2. Monitor if a future MLflow/sklearn combo breaks.
 - **Label Studio**: uses **Local Storage** on the shared `workspace` volume, not
   S3 — MinIO presigned URLs use the internal `minio` host the browser can't
   resolve (split-horizon).
