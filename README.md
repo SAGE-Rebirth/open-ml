@@ -89,6 +89,14 @@ Turn on `cicd` (login `openml` / `openml-admin`). Push `cicd/demo-repo/` to a Gi
 repo and its `.gitea/workflows/train.yml` trains and **registers `ci-model` to MLflow**
 automatically. See [`docs/cicd.md`](docs/cicd.md).
 
+## Secrets Vault
+
+The console has a built-in **🔐 Secrets Vault** — envelope-encrypted (AES-256-GCM),
+unlocked by a passphrase / access codes / a one-time recovery key (so you're never
+locked out). Secrets are scoped **local** (this project) or **global** (all your
+projects), and any project can read them via the pure-stdlib `cli/openml-secret`.
+See [`docs/vault.md`](docs/vault.md).
+
 ## Common commands
 
 ```bash

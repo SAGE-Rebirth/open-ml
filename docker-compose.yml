@@ -24,6 +24,10 @@ volumes:
   aimrepo:
   labelstudio:
   zenml:
+  gitea:
+  giteashared:
+  actrunner:
+  vault:
 
 # --- reusable label anchors -------------------------------------------------
 x-openml-labels: &default-labels
@@ -159,6 +163,8 @@ services:
       OPENML_PROJECT_DIR: ${OPENML_PROJECT_DIR:-/project}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-openml}
       OPENML_VM_MEM_GB: ${OPENML_VM_MEM_GB:-12}
+      # vault storage (envelope-encrypted secrets live in Postgres; DEK only in RAM)
+      OPENML_PG_DSN: postgresql://${POSTGRES_USER:-openml}:${POSTGRES_PASSWORD:-openml}@postgres:5432/${POSTGRES_DB:-openml}
       # port map passed through so the UI can build clickable links
       DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
       JUPYTER_PORT: ${JUPYTER_PORT:-8888}
@@ -174,6 +180,7 @@ services:
       PUSHGATEWAY_PORT: ${PUSHGATEWAY_PORT:-9091}
       LABELSTUDIO_PORT: ${LABELSTUDIO_PORT:-8081}
       ZENML_PORT: ${ZENML_PORT:-8237}
+      GITEA_PORT: ${GITEA_PORT:-3001}
     ports:
       - "${BIND_HOST:-127.0.0.1}:${DASHBOARD_PORT:-8080}:8080"
     volumes:
@@ -182,6 +189,8 @@ services:
       # mount the project at the SAME absolute path so `docker compose` run
       # from inside resolves ./bind mounts and build contexts identically
       - ${OPENML_PROJECT_DIR:-.}:${OPENML_PROJECT_DIR:-/project}
+      # vault auto-unseal key file (only written if you enable auto-unseal)
+      - vault:/vault
     # NOTE: no `working_dir` here — the app must run from its image WORKDIR
     # (/srv) so `uvicorn app.main:app` resolves. Compose commands the dashboard
     # issues set cwd=$OPENML_PROJECT_DIR explicitly (see app/docker_ctl.py).
@@ -301,6 +310,141 @@ services:
       <<: *default-labels
       openml.stack: "label"
       openml.service: "label-studio"
+
+  # ==========================================================================
+  # CICD  (profile: cicd)  — SageMaker Projects / Vertex CI  (Gitea + Actions)
+  # ==========================================================================
+
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: openml-gitea
+    profiles: ["cicd"]
+    restart: unless-stopped
+    mem_limit: ${GITEA_MEM_LIMIT:-1g}
+    mem_reservation: 256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: ${POSTGRES_USER:-openml}
+      GITEA__database__PASSWD: ${POSTGRES_PASSWORD:-openml}
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__ROOT_URL: http://localhost:${GITEA_PORT:-3001}/
+      GITEA__server__DISABLE_SSH: "true"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__actions__ENABLED: "true"
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${GITEA_PORT:-3001}:3000"
+    volumes:
+      - gitea:/data
+      - giteashared:/shared
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/healthz || wget -q -O /dev/null http://localhost:3000/api/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+    labels:
+      <<: *default-labels
+      openml.stack: "cicd"
+      openml.service: "gitea"
+
+  # one-shot: ensure an admin exists + write a runner registration token.
+  # `generate-runner-token` hits gitea's INTERNAL server API, which only exists
+  # inside the running gitea container — so we `docker exec` into it rather than
+  # run a standalone gitea CLI (which would fail with a connection error).
+  gitea-init:
+    image: docker:27-cli
+    container_name: openml-gitea-init
+    profiles: ["cicd"]
+    restart: "no"
+    depends_on:
+      gitea:
+        condition: service_healthy
+    environment:
+      GITEA_ADMIN_USER: ${GITEA_ADMIN_USER:-openml}
+      GITEA_ADMIN_PASSWORD: ${GITEA_ADMIN_PASSWORD:-openml-admin}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        GTA="gitea --work-path /data --config /data/gitea/conf/app.ini";
+        docker exec -u git openml-gitea $$GTA admin user create --admin
+        --username "$${GITEA_ADMIN_USER}" --password "$${GITEA_ADMIN_PASSWORD}"
+        --email admin@openml.local --must-change-password=false 2>/dev/null || true;
+        docker exec -u git openml-gitea $$GTA actions generate-runner-token 2>/dev/null
+        | tr -d '\r\n' > /shared/runner_token;
+        chmod 644 /shared/runner_token;
+        echo "gitea-init: admin ready + runner token written ($$(wc -c </shared/runner_token) bytes)"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - giteashared:/shared
+    labels:
+      <<: *default-labels
+      openml.stack: "cicd"
+      openml.service: "gitea-init"
+
+  # build-only helper: builds the job image act-runner uses for Actions jobs.
+  # Runs `true` and exits (like the other init jobs) — its purpose is the image,
+  # so the job image is built BY compose (not a standalone `docker build`).
+  ci-runner:
+    build:
+      context: ./cicd/ci-runner
+    image: openml/ci-runner:latest
+    container_name: openml-ci-runner
+    profiles: ["cicd"]
+    restart: "no"
+    command: ["true"]
+    labels:
+      <<: *default-labels
+      openml.stack: "cicd"
+      openml.service: "ci-runner"
+
+  act-runner:
+    image: gitea/act_runner:0.2.11
+    container_name: openml-act-runner
+    profiles: ["cicd"]
+    restart: unless-stopped
+    mem_limit: ${ACTRUNNER_MEM_LIMIT:-1g}
+    depends_on:
+      gitea-init:
+        condition: service_completed_successfully
+      ci-runner:
+        condition: service_completed_successfully
+    # Use the image's DEFAULT entrypoint — it registers (idempotently, via the
+    # persisted /data/.runner) from these env vars, then runs the daemon.
+    environment:
+      GITEA_INSTANCE_URL: http://gitea:3000
+      GITEA_RUNNER_REGISTRATION_TOKEN_FILE: /shared/runner_token
+      GITEA_RUNNER_NAME: openml-runner
+      GITEA_RUNNER_LABELS: "openml:docker://openml/ci-runner:latest,ubuntu-latest:docker://openml/ci-runner:latest"
+      CONFIG_FILE: /config.yaml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./cicd/runner-config.yaml:/config.yaml:ro
+      - giteashared:/shared:ro
+      - actrunner:/data
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep act_runner >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      <<: *default-labels
+      openml.stack: "cicd"
+      openml.service: "act-runner"
 
   # ==========================================================================
   # PIPELINE  (profile: pipeline)  — SageMaker Pipelines / Vertex Pipelines
