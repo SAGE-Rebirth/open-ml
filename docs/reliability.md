@@ -39,6 +39,17 @@ the trade-offs accepted for a single-machine personal platform.
 | Other containers | no memory limits besides Jupyter | low | footprints are small and stable; add `mem_limit` if needed |
 | Security | no auth, default creds | by design | bound to `127.0.0.1`; see README security |
 
+## Host restart / sleep
+
+Verified: after a full Docker Desktop shutdown (Mac sleep/reboot), the whole
+platform comes back **healthy in ~35 s with all data intact** (models, ZenML
+stacks + runs, Label Studio projects, DVC data, databases — all live in named
+volumes). Containers use `restart: unless-stopped`, so they auto-restart **once
+Docker Desktop is running**. Docker Desktop itself does not auto-start when the
+Mac is off — enable *Docker Desktop → Settings → General → Start Docker Desktop
+when you sign in* so the stack returns automatically after a reboot. Otherwise:
+`make up` then toggle the stacks you want (or `docker compose up -d <services>`).
+
 ## Recovery cheatsheet
 
 ```bash
