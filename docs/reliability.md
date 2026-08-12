@@ -36,7 +36,7 @@ the trade-offs accepted for a single-machine personal platform.
 | Aim | hard-kill mid-write can leave a RocksDB lock in the repo | low | only one process uses the repo, so `restart aim` clears it |
 | MLflow | a hard-killed kernel leaves the run stuck `RUNNING` | low | context-manager marks FAILED on exceptions; hard kills are rare |
 | Disk | Prometheus (bounded 7d), MinIO/Postgres, build cache grow over time | low | `docker system prune`; watch disk |
-| Other containers | no memory limits besides Jupyter | low | footprints are small and stable; add `mem_limit` if needed |
+| Memory | every container has a `mem_limit` (Jupyter 4g, Label Studio 2g, infra generous caps) | — | a runaway is OOM-killed in isolation, never the whole VM |
 | Security | no auth, default creds | by design | bound to `127.0.0.1`; see README security |
 
 ## Host restart / sleep
