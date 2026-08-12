@@ -19,7 +19,8 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from pathlib import Path
 
 from . import docker_ctl as dc
-from .stacks import CONTAINER_NAME, STACKS
+from . import vault
+from .stacks import CONTAINER_NAME, SETUP_JOBS, STACKS
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 POLL_SECONDS = 3
@@ -57,6 +58,8 @@ async def _poller() -> None:
 async def lifespan(app: FastAPI):
     with contextlib.suppress(Exception):
         await _refresh()          # warm the cache before serving
+    with contextlib.suppress(Exception):
+        vault.try_auto_unseal()   # unseal from key file if the user enabled it
     task = asyncio.create_task(_poller())
     try:
         yield
@@ -82,7 +85,27 @@ def _live_services() -> dict:
             "health": info.get("health"),
             "cpu_pct": live.get("cpu_pct", 0.0),
             "mem_bytes": live.get("mem_bytes", 0.0),
+            "exit_code": info.get("exit_code"),
         }
+    return out
+
+
+def _setup_jobs() -> list:
+    """One-shot init jobs with a 'completed/failed/running/pending' outcome."""
+    status = SNAPSHOT["status"]
+    out = []
+    for job in SETUP_JOBS:
+        st = status.get(job["service"], {})
+        state = st.get("status", "absent")
+        if state == "running":
+            outcome = "running"
+        elif state == "exited":
+            outcome = "completed" if st.get("exit_code") in (0, None) else "failed"
+        elif state == "absent":
+            outcome = "pending"
+        else:
+            outcome = state
+        out.append({"service": job["service"], "label": job["label"], "outcome": outcome})
     return out
 
 
@@ -178,6 +201,7 @@ def api_stacks() -> JSONResponse:
     return JSONResponse({
         "stacks": stacks_out,
         "services": _live_services(),          # flat map for the live patcher
+        "setup_jobs": _setup_jobs(),
         "vm_mem_bytes": SNAPSHOT["vm"],
         "used_mem_bytes": _used_mem(),
     })
@@ -215,6 +239,154 @@ def api_service_action(service: str, action: str) -> dict:
     return {"ok": ok, "log": log}
 
 
+# --------------------------------------------------------------------------- #
+# vault — multiple encrypted vaults, project-scoped secrets (see app/vault.py)
+# --------------------------------------------------------------------------- #
+@app.get("/api/vault/status")
+def vault_status() -> dict:
+    return vault.status()
+
+
+@app.post("/api/vault/vaults")
+def vault_create(payload: dict) -> dict:
+    name = (payload or {}).get("name", "")
+    pw = (payload or {}).get("passphrase", "")
+    if not str(name).strip():
+        raise HTTPException(status_code=400, detail="vault name required")
+    if len(pw) < 6:
+        raise HTTPException(status_code=400, detail="passphrase too short (min 6)")
+    try:
+        return vault.create_vault(name, pw)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.delete("/api/vault/vaults/{vid}")
+def vault_delete(vid: int) -> dict:
+    vault.delete_vault(vid)
+    return {"ok": True}
+
+
+@app.post("/api/vault/{vid}/unlock")
+def vault_unlock(vid: int, payload: dict) -> dict:
+    if not vault.unlock(vid, (payload or {}).get("credential", "")):
+        raise HTTPException(status_code=401, detail="invalid passphrase / code / recovery key")
+    return {"ok": True}
+
+
+@app.post("/api/vault/{vid}/lock")
+def vault_lock(vid: int) -> dict:
+    vault.lock(vid)
+    return {"ok": True}
+
+
+@app.get("/api/vault/{vid}/secrets")
+def vault_secrets(vid: int, scope: str | None = None) -> dict:
+    try:
+        return {"secrets": vault.list_secrets(vid, scope), "scopes": vault.list_scopes(vid)}
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.post("/api/vault/{vid}/secret")
+def vault_set(vid: int, payload: dict) -> dict:
+    try:
+        vault.set_secret(vid, payload.get("scope", "global"), payload["name"], payload["value"])
+        return {"ok": True}
+    except KeyError:
+        raise HTTPException(status_code=400, detail="name and value are required")
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.get("/api/vault/{vid}/secret/{scope}/{name}")
+def vault_get(vid: int, scope: str, name: str) -> dict:
+    try:
+        v = vault.get_secret(vid, scope, name)
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+    if v is None:
+        raise HTTPException(status_code=404, detail="secret not found")
+    return {"scope": scope, "name": name, "value": v}
+
+
+@app.delete("/api/vault/{vid}/secret/{scope}/{name}")
+def vault_delete_secret(vid: int, scope: str, name: str) -> dict:
+    try:
+        vault.delete_secret(vid, scope, name)
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.get("/api/vault/{vid}/slots")
+def vault_slots(vid: int) -> dict:
+    return {"slots": vault.list_slots(vid)}
+
+
+@app.post("/api/vault/{vid}/code")
+def vault_add_code(vid: int, payload: dict) -> dict:
+    try:
+        vault.add_code(vid, (payload or {}).get("label", ""), payload["code"])
+        return {"ok": True}
+    except KeyError:
+        raise HTTPException(status_code=400, detail="code is required")
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.delete("/api/vault/{vid}/slot/{slot_id}")
+def vault_remove_slot(vid: int, slot_id: int) -> dict:
+    try:
+        vault.remove_slot(vid, slot_id)
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/vault/{vid}/passphrase")
+def vault_change_passphrase(vid: int, payload: dict) -> dict:
+    pw = (payload or {}).get("new_passphrase", "")
+    if len(pw) < 6:
+        raise HTTPException(status_code=400, detail="passphrase too short (min 6)")
+    try:
+        vault.change_passphrase(vid, pw)
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.post("/api/vault/{vid}/auto-unseal")
+def vault_auto_unseal(vid: int, payload: dict) -> dict:
+    try:
+        vault.set_auto_unseal(vid, bool((payload or {}).get("enabled")))
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.post("/api/vault/{vid}/export")
+def vault_export(vid: int, payload: dict) -> dict:
+    pw = (payload or {}).get("password", "")
+    if len(pw) < 6:
+        raise HTTPException(status_code=400, detail="backup password too short (min 6)")
+    try:
+        return {"backup": vault.export_secrets(vid, pw)}
+    except ValueError as e:
+        raise HTTPException(status_code=423, detail=str(e))
+
+
+@app.post("/api/vault/{vid}/import")
+def vault_import(vid: int, payload: dict) -> dict:
+    try:
+        n = vault.import_secrets(vid, payload["password"], payload["backup"])
+        return {"ok": True, "imported": n}
+    except KeyError:
+        raise HTTPException(status_code=400, detail="password and backup are required")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/stream/stats")
 async def api_stream_stats() -> StreamingResponse:
     """SSE: push the cached snapshot every ~2s. No docker calls per client."""
@@ -223,6 +395,7 @@ async def api_stream_stats() -> StreamingResponse:
         while True:
             payload = {
                 "services": _live_services(),
+                "setup_jobs": _setup_jobs(),
                 "vm_mem_bytes": SNAPSHOT["vm"],
                 "used_mem_bytes": _used_mem(),
             }

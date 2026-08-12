@@ -90,9 +90,12 @@ STACKS = [
     },
     {
         "key": "cicd", "title": "CI/CD · Gitea Actions", "phase": 4,
-        "available": False, "always_on": False,
-        "description": "Local git + Actions runner: train-on-push, register, redeploy.",
-        "services": ["gitea", "act-runner"], "links": [],
+        "available": True, "always_on": False,
+        "description": "Local git + Actions runner: train-on-push → register model.",
+        "services": ["gitea", "act-runner"],
+        "links": [
+            {"label": "Gitea", "url": link("GITEA_PORT", "3001")},
+        ],
     },
     {
         "key": "serve", "title": "Serve · FastAPI", "phase": 5,
@@ -131,4 +134,16 @@ CONTAINER_NAME = {
     "pushgateway": "openml-pushgateway",
     "label-studio": "openml-label-studio",
     "zenml": "openml-zenml",
+    "gitea": "openml-gitea",
+    "act-runner": "openml-act-runner",
 }
+
+# One-shot setup/init jobs. These run once and exit(0) on success (like k8s
+# init-containers). The console shows them as a compact "Setup jobs" strip so
+# their "Exited (0)" state reads as "completed", not "broken".
+SETUP_JOBS = [
+    {"service": "minio-init", "label": "MinIO buckets", "container": "openml-minio-init"},
+    {"service": "db-init", "label": "Databases", "container": "openml-db-init"},
+    {"service": "gitea-init", "label": "Gitea admin + runner token", "container": "openml-gitea-init"},
+    {"service": "ci-runner", "label": "CI job image", "container": "openml-ci-runner"},
+]

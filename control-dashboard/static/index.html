@@ -109,6 +109,52 @@
             display:flex;justify-content:space-between;gap:10px}
   .soonfoot code{font-family:ui-monospace,monospace;color:var(--muted)}
 
+  /* setup / init jobs strip */
+  .shead .sub{font-weight:400;font-size:11px;color:var(--faint);text-transform:none;letter-spacing:0;margin-left:8px}
+  .setup{display:flex;gap:10px;flex-wrap:wrap;padding:4px 0 10px}
+  .sjob{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);
+        background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+  .sji{font-weight:800}
+  .sji.ok{color:var(--ok)} .sji.bad{color:var(--bad)} .sji.warn{color:var(--warn)} .sji.muted{color:var(--off)}
+  .spin{display:inline-block;animation:spin 1.1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* vault */
+  .vault{margin:20px 28px 0;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .vhead{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer}
+  .vhead .vt{font-weight:650;font-size:15px}
+  .vpill{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 10px;border-radius:999px;border:1px solid var(--line)}
+  .vpill.locked{color:var(--warn);border-color:#5a4a1e} .vpill.open{color:var(--ok);border-color:var(--okdim)} .vpill.new{color:var(--accent);border-color:#264a7a}
+  .vbody{padding:4px 18px 18px;border-top:1px solid var(--line);display:none}
+  .vbody.show{display:block}
+  .vrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  .vin{background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 11px;font-size:13px}
+  .vin:focus{outline:none;border-color:var(--accent)}
+  .vbtn{background:var(--accent);border:0;color:#fff;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  .vbtn.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+  .vbtn.danger{background:transparent;color:var(--bad);border:1px solid #5a2a2a}
+  .vbtn:hover{filter:brightness(1.1)}
+  .vsec{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-top:1px solid #1d222c;font-size:13px}
+  .vscope{font-size:10.5px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .vscope.global{color:var(--accent2);border-color:#4a3a7a}
+  .vscope.proj{color:var(--warn);border-color:#5a4a1e}
+  .vtabs{display:flex;gap:8px;flex-wrap:wrap;padding:8px 0 4px}
+  .vtab{font-size:12.5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);cursor:pointer;color:var(--muted)}
+  .vtab.on{border-color:var(--accent);color:var(--txt);background:#132033}
+  .vcount{background:var(--card2);border-radius:999px;padding:0 6px;font-size:10px;margin-left:3px}
+  .vpanel{padding-top:6px}
+  .vname{font-family:ui-monospace,monospace}
+  .vval{font-family:ui-monospace,monospace;color:var(--ok);word-break:break-all}
+  .vop{cursor:pointer;color:var(--muted);padding:3px 7px;border-radius:6px;border:1px solid var(--line);font-size:12px}
+  .vop:hover{color:var(--txt);border-color:var(--accent)}
+  .vnote{font-size:12px;color:var(--muted);margin:6px 0}
+  .vkey{font-family:ui-monospace,monospace;background:#0b0e13;border:1px dashed var(--warn);border-radius:8px;padding:12px;color:var(--warn);word-break:break-all;font-size:14px;margin:8px 0}
+  .vsub{font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);margin:16px 0 4px}
+  .switch{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer}
+  .switch i{width:38px;height:20px;border-radius:999px;background:#333a45;position:relative;transition:.2s}
+  .switch i::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#eaeef3;transition:.2s}
+  .switch.on i{background:var(--ok)} .switch.on i::after{left:20px}
+
   footer{color:var(--muted);font-size:12px;padding:18px 28px 34px;display:flex;gap:10px;align-items:center}
   .livedot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:pulse 2s infinite}
 
@@ -147,6 +193,7 @@
   </div>
 </header>
 
+<div id="vault" class="vault"></div>
 <div id="app"></div>
 <footer><span class="livedot"></span><span id="foot">connecting…</span></footer>
 <div id="toast"></div>
@@ -206,6 +253,8 @@ function renderStructure(model){
   let html = `<div class="section">
     <div class="shead"><h2>Active stacks</h2><div class="rule"></div></div>
     <div class="grid">${active.map(activeCard).join("")}</div>
+    <div class="shead"><h2>Setup jobs<span class="sub">one-shot · run once then exit · ✓ = done</span></h2><div class="rule"></div></div>
+    <div class="setup" id="setup">${setupChips(model.setup_jobs)}</div>
     <div class="shead"><h2>Roadmap · coming in later phases</h2><div class="rule"></div></div>
     <div class="grid">${soon.map(soonCard).join("")}</div>
   </div>`;
@@ -216,6 +265,14 @@ function renderStructure(model){
     const tg=document.querySelector(`[data-toggle="${s.key}"]`);
     if(tg) tg.onclick=()=>{ const on=tg.classList.contains("on"); stackToggle(s.key,!on); };
   }
+}
+
+function setupChips(jobs){
+  const M={completed:["✓","ok"],failed:["✗","bad"],running:["⟳","warn spin"],pending:["○","muted"]};
+  return (jobs||[]).map(j=>{
+    const m=M[j.outcome]||["○","muted"];
+    return `<span class="sjob" title="${j.service}: ${j.outcome}"><span class="sji ${m[1]}">${m[0]}</span>${j.label}</span>`;
+  }).join("") || '<span class="sjob"><span class="sji muted">○</span>none yet</span>';
 }
 
 function activeCard(s){
@@ -311,9 +368,119 @@ function applyLive(d){
 
   document.getElementById("s-stacks").textContent=stacksOn;
   document.getElementById("s-svcs").textContent=svcUp;
+  const su=document.getElementById("setup");
+  if(su && d.setup_jobs) su.innerHTML=setupChips(d.setup_jobs);
+
   const t=new Date().toLocaleTimeString();
   document.getElementById("foot").textContent=`live · ${stacksOn} stack(s) on · updated ${t}`;
 }
+
+// ---------------- Secrets Vaults (multi-vault, project-scoped) ----------------
+let vaultOpen=false, vaultData=null, activeVid=null;
+async function vjson(method,url,body){
+  const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.detail||r.statusText); return j;
+}
+async function loadVault(){
+  try{ vaultData=await vjson('GET','/api/vault/status'); }catch(e){ vaultData={ok:false,error:e.message,vaults:[]}; }
+  const ids=(vaultData.vaults||[]).map(v=>v.id);
+  if(activeVid!=='new' && (activeVid===null || !ids.includes(activeVid))) activeVid=ids[0]??null;
+  renderVault();
+}
+function activeVault(){ return (vaultData.vaults||[]).find(v=>v.id===activeVid)||null; }
+function renderVault(){
+  const s=vaultData; let inner;
+  if(!s.ok){ inner=`<div class="vnote">Vault backend unavailable (${s.error||'Postgres not reachable'}).</div>`; }
+  else{
+    const tabs=(s.vaults||[]).map(v=>`<span class="vtab ${v.id===activeVid?'on':''}" onclick="activeVid=${v.id};renderVault()">${v.unsealed?'🔓':'🔒'} ${v.name}${v.secrets?`<span class="vcount">${v.secrets}</span>`:''}</span>`).join('');
+    const newtab=`<span class="vtab ${activeVid==='new'?'on':''}" onclick="activeVid='new';renderVault()">＋ new vault</span>`;
+    let panel;
+    if(activeVid==='new' || (s.vaults||[]).length===0) panel=vaultCreatePanel();
+    else { const v=activeVault(); panel=v?(v.unsealed?vaultManage(v):vaultUnlockPanel(v)):''; }
+    inner=`<div class="vtabs">${tabs}${newtab}</div><div class="vpanel">${panel}</div>`;
+  }
+  const anyOpen=(s.vaults||[]).some(v=>v.unsealed);
+  document.getElementById('vault').innerHTML=
+    `<div class="vhead" onclick="vaultOpen=!vaultOpen;document.querySelector('#vault .vbody').classList.toggle('show',vaultOpen)">
+       <span class="vt">🔐 Secrets Vaults</span>
+       <span class="vpill ${anyOpen?'open':'locked'}">${(s.vaults||[]).length} vault(s)</span>
+       <span class="spacer"></span><span class="vnote" style="margin:0">click to manage</span>
+     </div><div class="vbody ${vaultOpen?'show':''}">${inner}</div>`;
+  const v=activeVault(); if(v&&v.unsealed) vaultLoadLists(v.id);
+}
+function vaultCreatePanel(){
+  return `<div class="vnote">Create a vault. You'll get a one-time <b>recovery key</b> so you're never locked out.</div>
+    <div class="vrow"><input class="vin" id="v-vname" placeholder="vault name (e.g. work)">
+      <input class="vin" id="v-newpw" type="password" placeholder="passphrase (min 6)">
+      <button class="vbtn" onclick="vaultCreate()">Create vault</button></div>`;
+}
+async function vaultCreate(){
+  const name=document.getElementById('v-vname').value,pw=document.getElementById('v-newpw').value;
+  try{ const r=await vjson('POST','/api/vault/vaults',{name,passphrase:pw}); activeVid=r.id;
+    document.querySelector('#vault .vpanel').innerHTML=
+      `<div class="vsub">🛟 Recovery key for '${r.name}' — shown ONCE, save it now</div><div class="vkey">${r.recovery_key}</div>
+       <div class="vrow"><button class="vbtn ghost" onclick="navigator.clipboard.writeText('${r.recovery_key}');toast('copied')">Copy</button>
+       <button class="vbtn" onclick="loadVault()">I've saved it — continue</button></div>`;
+    toast("vault '"+r.name+"' created");
+  }catch(e){ toast('⚠ '+e.message); }
+}
+function vaultUnlockPanel(v){
+  return `<div class="vnote">Unlock <b>${v.name}</b> — passphrase, an access code, or the recovery key.</div>
+    <div class="vrow"><input class="vin" id="v-cred" type="password" placeholder="passphrase / code / recovery key" style="flex:1"
+      onkeydown="if(event.key==='Enter')vaultUnlockGo(${v.id})">
+      <button class="vbtn" onclick="vaultUnlockGo(${v.id})">Unlock</button></div>
+    <div class="vnote" style="margin-top:12px">Locked out of '${v.name}'? <a href="#" style="color:var(--bad)" onclick="vaultDeleteVault(${v.id},'${v.name}');return false">Delete this vault</a> and start fresh (or restore a backup into a new one).</div>`;
+}
+async function vaultUnlockGo(vid){ try{ await vjson('POST','/api/vault/'+vid+'/unlock',{credential:document.getElementById('v-cred').value}); toast('unlocked'); loadVault(); }catch(e){ toast('⚠ '+e.message); } }
+function vaultManage(v){
+  return `<div class="vrow">
+      <span class="vt" style="font-size:14px">🔓 ${v.name}</span>
+      <button class="vbtn ghost" onclick="vaultLock(${v.id})">🔒 Lock</button>
+      <label class="switch ${v.auto_unseal?'on':''}" onclick="vaultAuto(${v.id},${!v.auto_unseal})"><i></i> auto-unlock</label></div>
+    <div class="vsub">Add secret</div>
+    <div class="vrow">
+      <input class="vin" id="v-name" placeholder="NAME e.g. OPENAI_API_KEY">
+      <input class="vin" id="v-value" placeholder="value" style="flex:1">
+      <input class="vin" id="v-scope" placeholder="global or project" value="global" list="v-scopelist" style="width:150px">
+      <datalist id="v-scopelist"></datalist>
+      <button class="vbtn" onclick="vaultAdd(${v.id})">Add</button></div>
+    <div class="vsub">Secrets <span class="vnote" style="text-transform:none;font-weight:400"> · global = all projects · or a project name</span></div>
+    <div id="v-secrets"><div class="vnote">loading…</div></div>
+    <div class="vsub">Unlock methods</div>
+    <div class="vrow"><input class="vin" id="v-codelabel" placeholder="label"><input class="vin" id="v-code" type="password" placeholder="new access code"><button class="vbtn ghost" onclick="vaultAddCode(${v.id})">+ Add code</button></div>
+    <div id="v-slots"></div>
+    <div class="vrow"><input class="vin" id="v-chpw" type="password" placeholder="change passphrase (min 6)"><button class="vbtn ghost" onclick="vaultChangePw(${v.id})">Update passphrase</button></div>
+    <div class="vsub">Backup &amp; restore <span class="vnote" style="text-transform:none;font-weight:400"> · offline safety net</span></div>
+    <div class="vrow"><button class="vbtn ghost" onclick="vaultExport(${v.id})">⬇ Download encrypted backup</button></div>
+    <div class="vrow"><textarea class="vin" id="v-imp" placeholder="paste a backup to restore" style="flex:1;min-height:36px;font-family:ui-monospace,monospace"></textarea><input class="vin" id="v-imppw" type="password" placeholder="backup password"><button class="vbtn ghost" onclick="vaultImport(${v.id})">⬆ Restore</button></div>
+    <div class="vrow" style="margin-top:12px"><a href="#" style="color:var(--bad);font-size:12px" onclick="vaultDeleteVault(${v.id},'${v.name}');return false">Delete vault '${v.name}'</a></div>`;
+}
+async function vaultLoadLists(vid){
+  try{ const r=await vjson('GET','/api/vault/'+vid+'/secrets'); const el=document.getElementById('v-secrets'); if(el)
+    el.innerHTML=r.secrets.length?r.secrets.map(x=>`<div class="vsec">
+      <span class="vscope ${x.scope==='global'?'global':'proj'}">${x.scope}</span>
+      <span class="vname">${x.name}<span class="vval" data-rev="${x.scope}/${x.name}"></span></span>
+      <span><span class="vop" onclick="vaultReveal(${vid},'${x.scope}','${x.name}')">reveal</span>
+        <span class="vop" onclick="vaultCopy(${vid},'${x.scope}','${x.name}')">copy</span>
+        <span class="vop" onclick="vaultDel(${vid},'${x.scope}','${x.name}')">✕</span></span></div>`).join(''):'<div class="vnote">no secrets yet</div>';
+    const dl=document.getElementById('v-scopelist'); if(dl) dl.innerHTML=['global'].concat(r.scopes||[]).filter((v,i,a)=>a.indexOf(v)===i).map(s=>'<option value="'+s+'">').join('');
+  }catch(e){}
+  try{ const j=await vjson('GET','/api/vault/'+vid+'/slots'); const el=document.getElementById('v-slots'); if(el)
+    el.innerHTML=j.slots.map(s=>`<div class="vsec"><span class="vscope">${s.kind}</span><span class="vname">${s.label}</span><span>${(s.kind==='recovery'||s.kind==='passphrase')?'<span class="vnote" style="margin:0">protected</span>':`<span class="vop" onclick="vaultRmSlot(${vid},${s.id})">remove</span>`}</span></div>`).join('');
+  }catch(e){}
+}
+async function vaultAdd(vid){ const name=document.getElementById('v-name').value,value=document.getElementById('v-value').value,scope=(document.getElementById('v-scope').value||'global').trim(); if(!name||!value){toast('name and value required');return;} try{ await vjson('POST','/api/vault/'+vid+'/secret',{scope,name,value}); document.getElementById('v-name').value='';document.getElementById('v-value').value=''; toast('saved to '+scope); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultReveal(vid,scope,name){ try{ const r=await vjson('GET','/api/vault/'+vid+'/secret/'+scope+'/'+name); const el=document.querySelector(`[data-rev="${scope}/${name}"]`); if(el) el.textContent=' = '+r.value; }catch(e){ toast('⚠ '+e.message); } }
+async function vaultCopy(vid,scope,name){ try{ const r=await vjson('GET','/api/vault/'+vid+'/secret/'+scope+'/'+name); navigator.clipboard.writeText(r.value); toast('copied '+name); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultDel(vid,scope,name){ if(!confirm(`Delete ${scope}/${name}?`))return; try{ await vjson('DELETE','/api/vault/'+vid+'/secret/'+scope+'/'+name); toast('deleted'); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultAddCode(vid){ const label=document.getElementById('v-codelabel').value,code=document.getElementById('v-code').value; if(!code){toast('enter a code');return;} try{ await vjson('POST','/api/vault/'+vid+'/code',{label,code}); document.getElementById('v-code').value=''; toast('code added'); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultRmSlot(vid,id){ if(!confirm('Remove this unlock method?'))return; try{ await vjson('DELETE','/api/vault/'+vid+'/slot/'+id); toast('removed'); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultChangePw(vid){ try{ await vjson('POST','/api/vault/'+vid+'/passphrase',{new_passphrase:document.getElementById('v-chpw').value}); document.getElementById('v-chpw').value=''; toast('passphrase updated'); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultAuto(vid,on){ try{ await vjson('POST','/api/vault/'+vid+'/auto-unseal',{enabled:on}); toast('auto-unlock '+(on?'on':'off')); loadVault(); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultLock(vid){ try{ await vjson('POST','/api/vault/'+vid+'/lock'); toast('locked'); loadVault(); }catch(e){} }
+async function vaultExport(vid){ const pw=prompt('Backup password (store it safely):'); if(!pw)return; if(pw.length<6){toast('too short');return;} try{ const r=await vjson('POST','/api/vault/'+vid+'/export',{password:pw}); const b=new Blob([r.backup],{type:'text/plain'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='openml-vault-backup.txt';a.click();URL.revokeObjectURL(u); toast('backup downloaded'); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultImport(vid){ const backup=document.getElementById('v-imp').value.trim(),pw=document.getElementById('v-imppw').value; if(!backup||!pw){toast('paste backup + password');return;} try{ const r=await vjson('POST','/api/vault/'+vid+'/import',{password:pw,backup}); toast('restored '+r.imported); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultDeleteVault(vid,name){ if(!confirm(`Delete vault '${name}'? This permanently removes its secrets and unlock methods.`))return; if(!confirm('Really delete — cannot be undone?'))return; try{ await vjson('DELETE','/api/vault/vaults/'+vid); activeVid=null; toast("vault '"+name+"' deleted"); loadVault(); }catch(e){ toast('⚠ '+e.message); } }
 
 async function init(){
   try{
@@ -321,6 +488,7 @@ async function init(){
     renderStructure(MODEL); applyLive(MODEL);
   }catch(e){ document.getElementById("foot").textContent="⚠ cannot reach backend"; return; }
   connectSSE();
+  loadVault();
 }
 function connectSSE(){
   const es=new EventSource("/api/stream/stats");

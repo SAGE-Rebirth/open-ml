@@ -49,6 +49,7 @@ def list_managed() -> dict[str, dict]:
             "status": c.status,               # running | exited | created | ...
             "health": health,                 # healthy | unhealthy | starting | None
             "stack": labels.get("openml.stack"),
+            "exit_code": state.get("ExitCode"),  # for one-shot setup jobs
         }
     return out
 
