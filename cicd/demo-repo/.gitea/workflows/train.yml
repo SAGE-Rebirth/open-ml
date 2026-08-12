@@ -1,0 +1,15 @@
+name: train-on-push
+on: [push]
+
+jobs:
+  train:
+    runs-on: openml          # -> openml/ci-runner image, on the openml network
+    steps:
+      - uses: actions/checkout@v4
+      - name: train and register model
+        env:
+          MLFLOW_TRACKING_URI: http://mlflow:5000
+          MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin123
+        run: python3 train.py

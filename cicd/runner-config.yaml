@@ -1,0 +1,19 @@
+log:
+  level: info
+runner:
+  capacity: 1
+  timeout: 30m
+  fetch_timeout: 5s
+  fetch_interval: 2s
+cache:
+  enabled: false
+container:
+  # job containers join the OpenML network so they can reach
+  # gitea / mlflow / minio by service name
+  network: openml_net
+  privileged: false
+  # ci-runner is a LOCAL image (not in a registry) — never try to pull it
+  force_pull: false
+  # label the ephemeral job containers so they're identifiable as OpenML's
+  # (they are created + destroyed per job by the runner — not compose services)
+  options: "--label openml.project=openml --label openml.stack=cicd-job"
