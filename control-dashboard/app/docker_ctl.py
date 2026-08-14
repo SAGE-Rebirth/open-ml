@@ -24,7 +24,9 @@ _client: Optional[docker.DockerClient] = None
 def client() -> docker.DockerClient:
     global _client
     if _client is None:
-        _client = docker.from_env()
+        # bound every docker-py call — otherwise a wedged daemon socket would
+        # block the poller thread forever and freeze the cached snapshot.
+        _client = docker.from_env(timeout=10)
     return _client
 
 

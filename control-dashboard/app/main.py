@@ -20,7 +20,13 @@ from pathlib import Path
 
 from . import docker_ctl as dc
 from . import vault
-from .stacks import CONTAINER_NAME, SETUP_JOBS, STACKS
+from .stacks import ALWAYS_ON_SERVICES, CONTAINER_NAME, SERVICE_STACK, SETUP_JOBS, STACKS
+
+# services this API is allowed to control: real stack services + one-shot jobs.
+# Prevents an unvalidated URL segment from reaching `docker compose` (a caller
+# could otherwise control any service in the mounted compose file, or slip an
+# option-looking token through).
+CONTROLLABLE = set(SERVICE_STACK) | {j["service"] for j in SETUP_JOBS}
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 POLL_SECONDS = 3
@@ -40,7 +46,7 @@ def _refresh_blocking() -> dict:
 
 
 async def _refresh() -> None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     snap = await loop.run_in_executor(None, _refresh_blocking)
     SNAPSHOT.update(snap)
 
@@ -113,6 +119,11 @@ def _used_mem() -> float:
     return sum(v.get("mem_bytes", 0.0) for v in SNAPSHOT["stats"].values())
 
 
+def _esc_label(v: str) -> str:
+    """Escape a Prometheus label value: backslash, double-quote, newline."""
+    return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 def _stack_by_key(key: str) -> dict:
     for s in STACKS:
         if s["key"] == key:
@@ -151,7 +162,10 @@ def metrics() -> PlainTextResponse:
     for svc, info in status.items():
         name = info.get("name", svc)
         stack = info.get("stack", "")
-        lbl = f'name="{name}",service="{svc}",stack="{stack}"'
+        # Escape per the Prometheus exposition format so a crafted container
+        # label value (\, ", newline) can't corrupt or forge metric lines.
+        lbl = (f'name="{_esc_label(name)}",service="{_esc_label(svc)}",'
+               f'stack="{_esc_label(stack)}"')
         running = 1 if info.get("status") == "running" else 0
         up.append(f"openml_container_up{{{lbl}}} {running}")
         live = stats.get(name, {})
@@ -229,11 +243,18 @@ def api_stack_down(key: str) -> dict:
 def api_service_action(service: str, action: str) -> dict:
     if action not in {"start", "stop", "restart"}:
         raise HTTPException(status_code=400, detail="action must be start|stop|restart")
+    if service not in CONTROLLABLE:
+        raise HTTPException(status_code=404, detail=f"unknown service: {service}")
     if service in dc.PROTECTED:
         raise HTTPException(
             status_code=409,
             detail=f"{service} runs this console and can't be controlled from here "
                    f"(use `docker compose restart {service}` from a terminal)",
+        )
+    if action == "stop" and service in ALWAYS_ON_SERVICES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{service} is core infrastructure and can't be stopped (restart is allowed)",
         )
     ok, log = dc.service_action(service, action)
     return {"ok": ok, "log": log}

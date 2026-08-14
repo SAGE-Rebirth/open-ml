@@ -208,6 +208,11 @@ const fmt = b => {
 };
 const toast = (m)=>{const t=document.getElementById("toast");t.textContent=m;
   t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),3600);};
+// Escape user-controlled strings before they touch innerHTML / inline handlers.
+// Vault + secret + scope + slot names are user input; without this a name like
+// <img src=x onerror=…> would execute in the console (stored XSS). Encoding the
+// quotes also prevents breaking out of onclick="f('…')" JS-string arguments.
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 let MODEL=null;
 const PROTECTED=new Set();   // never controllable (the console itself)
@@ -394,7 +399,7 @@ function renderVault(){
   const s=vaultData; let inner;
   if(!s.ok){ inner=`<div class="vnote">Vault backend unavailable (${s.error||'Postgres not reachable'}).</div>`; }
   else{
-    const tabs=(s.vaults||[]).map(v=>`<span class="vtab ${v.id===activeVid?'on':''}" onclick="activeVid=${v.id};renderVault()">${v.unsealed?'🔓':'🔒'} ${v.name}${v.secrets?`<span class="vcount">${v.secrets}</span>`:''}</span>`).join('');
+    const tabs=(s.vaults||[]).map(v=>`<span class="vtab ${v.id===activeVid?'on':''}" onclick="activeVid=${v.id};renderVault()">${v.unsealed?'🔓':'🔒'} ${esc(v.name)}${v.secrets?`<span class="vcount">${v.secrets}</span>`:''}</span>`).join('');
     const newtab=`<span class="vtab ${activeVid==='new'?'on':''}" onclick="activeVid='new';renderVault()">＋ new vault</span>`;
     let panel;
     if(activeVid==='new' || (s.vaults||[]).length===0) panel=vaultCreatePanel();
@@ -420,23 +425,23 @@ async function vaultCreate(){
   const name=document.getElementById('v-vname').value,pw=document.getElementById('v-newpw').value;
   try{ const r=await vjson('POST','/api/vault/vaults',{name,passphrase:pw}); activeVid=r.id;
     document.querySelector('#vault .vpanel').innerHTML=
-      `<div class="vsub">🛟 Recovery key for '${r.name}' — shown ONCE, save it now</div><div class="vkey">${r.recovery_key}</div>
+      `<div class="vsub">🛟 Recovery key for '${esc(r.name)}' — shown ONCE, save it now</div><div class="vkey">${esc(r.recovery_key)}</div>
        <div class="vrow"><button class="vbtn ghost" onclick="navigator.clipboard.writeText('${r.recovery_key}');toast('copied')">Copy</button>
        <button class="vbtn" onclick="loadVault()">I've saved it — continue</button></div>`;
     toast("vault '"+r.name+"' created");
   }catch(e){ toast('⚠ '+e.message); }
 }
 function vaultUnlockPanel(v){
-  return `<div class="vnote">Unlock <b>${v.name}</b> — passphrase, an access code, or the recovery key.</div>
+  return `<div class="vnote">Unlock <b>${esc(v.name)}</b> — passphrase, an access code, or the recovery key.</div>
     <div class="vrow"><input class="vin" id="v-cred" type="password" placeholder="passphrase / code / recovery key" style="flex:1"
       onkeydown="if(event.key==='Enter')vaultUnlockGo(${v.id})">
       <button class="vbtn" onclick="vaultUnlockGo(${v.id})">Unlock</button></div>
-    <div class="vnote" style="margin-top:12px">Locked out of '${v.name}'? <a href="#" style="color:var(--bad)" onclick="vaultDeleteVault(${v.id},'${v.name}');return false">Delete this vault</a> and start fresh (or restore a backup into a new one).</div>`;
+    <div class="vnote" style="margin-top:12px">Locked out of '${esc(v.name)}'? <a href="#" style="color:var(--bad)" onclick="vaultDeleteVault(${v.id},'${esc(v.name)}');return false">Delete this vault</a> and start fresh (or restore a backup into a new one).</div>`;
 }
 async function vaultUnlockGo(vid){ try{ await vjson('POST','/api/vault/'+vid+'/unlock',{credential:document.getElementById('v-cred').value}); toast('unlocked'); loadVault(); }catch(e){ toast('⚠ '+e.message); } }
 function vaultManage(v){
   return `<div class="vrow">
-      <span class="vt" style="font-size:14px">🔓 ${v.name}</span>
+      <span class="vt" style="font-size:14px">🔓 ${esc(v.name)}</span>
       <button class="vbtn ghost" onclick="vaultLock(${v.id})">🔒 Lock</button>
       <label class="switch ${v.auto_unseal?'on':''}" onclick="vaultAuto(${v.id},${!v.auto_unseal})"><i></i> auto-unlock</label></div>
     <div class="vsub">Add secret</div>
@@ -455,20 +460,20 @@ function vaultManage(v){
     <div class="vsub">Backup &amp; restore <span class="vnote" style="text-transform:none;font-weight:400"> · offline safety net</span></div>
     <div class="vrow"><button class="vbtn ghost" onclick="vaultExport(${v.id})">⬇ Download encrypted backup</button></div>
     <div class="vrow"><textarea class="vin" id="v-imp" placeholder="paste a backup to restore" style="flex:1;min-height:36px;font-family:ui-monospace,monospace"></textarea><input class="vin" id="v-imppw" type="password" placeholder="backup password"><button class="vbtn ghost" onclick="vaultImport(${v.id})">⬆ Restore</button></div>
-    <div class="vrow" style="margin-top:12px"><a href="#" style="color:var(--bad);font-size:12px" onclick="vaultDeleteVault(${v.id},'${v.name}');return false">Delete vault '${v.name}'</a></div>`;
+    <div class="vrow" style="margin-top:12px"><a href="#" style="color:var(--bad);font-size:12px" onclick="vaultDeleteVault(${v.id},'${esc(v.name)}');return false">Delete vault '${esc(v.name)}'</a></div>`;
 }
 async function vaultLoadLists(vid){
   try{ const r=await vjson('GET','/api/vault/'+vid+'/secrets'); const el=document.getElementById('v-secrets'); if(el)
     el.innerHTML=r.secrets.length?r.secrets.map(x=>`<div class="vsec">
-      <span class="vscope ${x.scope==='global'?'global':'proj'}">${x.scope}</span>
-      <span class="vname">${x.name}<span class="vval" data-rev="${x.scope}/${x.name}"></span></span>
-      <span><span class="vop" onclick="vaultReveal(${vid},'${x.scope}','${x.name}')">reveal</span>
-        <span class="vop" onclick="vaultCopy(${vid},'${x.scope}','${x.name}')">copy</span>
-        <span class="vop" onclick="vaultDel(${vid},'${x.scope}','${x.name}')">✕</span></span></div>`).join(''):'<div class="vnote">no secrets yet</div>';
+      <span class="vscope ${x.scope==='global'?'global':'proj'}">${esc(x.scope)}</span>
+      <span class="vname">${esc(x.name)}<span class="vval" data-rev="${esc(x.scope)}/${esc(x.name)}"></span></span>
+      <span><span class="vop" onclick="vaultReveal(${vid},'${esc(x.scope)}','${esc(x.name)}')">reveal</span>
+        <span class="vop" onclick="vaultCopy(${vid},'${esc(x.scope)}','${esc(x.name)}')">copy</span>
+        <span class="vop" onclick="vaultDel(${vid},'${esc(x.scope)}','${esc(x.name)}')">✕</span></span></div>`).join(''):'<div class="vnote">no secrets yet</div>';
     const dl=document.getElementById('v-scopelist'); if(dl) dl.innerHTML=['global'].concat(r.scopes||[]).filter((v,i,a)=>a.indexOf(v)===i).map(s=>'<option value="'+s+'">').join('');
   }catch(e){}
   try{ const j=await vjson('GET','/api/vault/'+vid+'/slots'); const el=document.getElementById('v-slots'); if(el)
-    el.innerHTML=j.slots.map(s=>`<div class="vsec"><span class="vscope">${s.kind}</span><span class="vname">${s.label}</span><span>${(s.kind==='recovery'||s.kind==='passphrase')?'<span class="vnote" style="margin:0">protected</span>':`<span class="vop" onclick="vaultRmSlot(${vid},${s.id})">remove</span>`}</span></div>`).join('');
+    el.innerHTML=j.slots.map(s=>`<div class="vsec"><span class="vscope">${esc(s.kind)}</span><span class="vname">${esc(s.label)}</span><span>${(s.kind==='recovery'||s.kind==='passphrase')?'<span class="vnote" style="margin:0">protected</span>':`<span class="vop" onclick="vaultRmSlot(${vid},${s.id})">remove</span>`}</span></div>`).join('');
   }catch(e){}
 }
 async function vaultAdd(vid){ const name=document.getElementById('v-name').value,value=document.getElementById('v-value').value,scope=(document.getElementById('v-scope').value||'global').trim(); if(!name||!value){toast('name and value required');return;} try{ await vjson('POST','/api/vault/'+vid+'/secret',{scope,name,value}); document.getElementById('v-name').value='';document.getElementById('v-value').value=''; toast('saved to '+scope); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }

@@ -62,7 +62,8 @@ STACKS = [
         "key": "monitor", "title": "Monitor · Prometheus + Grafana", "phase": 1,
         "available": True, "always_on": False,
         "description": "Live metrics, gauges and dashboards for training, host and containers.",
-        "services": ["prometheus", "grafana", "cadvisor", "node-exporter", "pushgateway"],
+        "services": ["prometheus", "grafana", "cadvisor", "node-exporter", "pushgateway",
+                     "postgres-exporter", "redis-exporter", "blackbox-exporter"],
         "links": [
             {"label": "Grafana", "url": link("GRAFANA_PORT", "3000")},
             {"label": "Prometheus", "url": link("PROMETHEUS_PORT", "9090")},
@@ -122,6 +123,12 @@ SERVICE_STACK = {
     for svc in s["services"]
 }
 
+# services that belong to an always-on (core) stack — the API must refuse to
+# `stop` these (mirrors the UI, which hides the stop control for core infra).
+ALWAYS_ON_SERVICES = {
+    svc for s in STACKS if s["always_on"] for svc in s["services"]
+}
+
 # compose service name -> concrete container_name in docker-compose.yml
 CONTAINER_NAME = {
     "postgres": "openml-postgres",
@@ -136,6 +143,9 @@ CONTAINER_NAME = {
     "cadvisor": "openml-cadvisor",
     "node-exporter": "openml-node-exporter",
     "pushgateway": "openml-pushgateway",
+    "postgres-exporter": "openml-postgres-exporter",
+    "redis-exporter": "openml-redis-exporter",
+    "blackbox-exporter": "openml-blackbox-exporter",
     "label-studio": "openml-label-studio",
     "zenml": "openml-zenml",
     "gitea": "openml-gitea",
