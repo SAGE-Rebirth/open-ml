@@ -156,7 +156,7 @@ control-dashboard/         # the console (FastAPI + docker-py + static UI + vaul
   app/{main,docker_ctl,stacks,vault}.py · static/index.html
 jupyter/ mlflow/ zenml/    # custom image build contexts
 serving/{bentoml,fastapi,gradio}/   # Phase 5 serve images (bentoml=default, fastapi=example)
-monitoring/                # prometheus.yml + grafana provisioning/dashboards (4 dashboards)
+monitoring/                # prometheus.yml + blackbox/ + grafana dashboards (5)
 cicd/                      # ci-runner image, runner-config.yaml, demo-repo/
 cli/openml-secret          # stdlib CLI for the vault (other projects)
 notebooks/                 # demos (see below) + openml_telemetry.py helper
@@ -229,6 +229,29 @@ docs/                      # architecture, macos-constraints, reliability, label
 - **Image-declared `VOLUME` → orphan anon volumes**: redis/db-init got
   `project=none` anonymous volumes; give such services a named volume at that path
   (tmpfs does NOT prevent it in this Docker build).
+- **Editing a single-file bind mount needs a container recreate.** Rewriting a
+  bind-mounted *file* (e.g. `monitoring/prometheus/prometheus.yml`) creates a new
+  inode; a container started earlier is still bound to the old inode and sees
+  "no such file". `docker kill -s HUP` won't help — `docker compose up -d
+  --force-recreate prometheus` re-resolves the mount. (Prometheus has no
+  `--web.enable-lifecycle`, so SIGHUP is the only in-place reload anyway.)
+- **Full monitoring coverage** (added post-Phase-5): Prometheus scrapes **25
+  targets**. Native metrics enabled on **minio** (`MINIO_PROMETHEUS_AUTH_TYPE=
+  public` → `/minio/v2/metrics/{cluster,node,bucket}`), **gitea**
+  (`GITEA__metrics__ENABLED=true` → `/metrics`), and **grafana** (`/metrics` by
+  default). Sidecar exporters for **postgres** and **redis**. A **blackbox**
+  exporter gives HTTP up/down + latency for every app with no native `/metrics`.
+  The `openml · Platform Overview` Grafana dashboard visualizes all of it.
+- **`redis_exporter` is `FROM scratch`** — no shell/wget, so a Docker healthcheck
+  can't run (it reports `unhealthy` on a working service). Leave it with no
+  healthcheck; its liveness is the Prometheus `redis` target (`up == 1`).
+- **MLflow spawns gunicorn workers = CPU count** (~750 MB idle on a 10-CPU VM).
+  Pin `mlflow server --workers 2` → ~350 MB, plenty for one user.
+- **Pushgateway is batch-only.** It is empty at idle *by design* — the telemetry
+  helper pushes live gauges *during* a run and deletes the group on exit
+  (`notebooks/openml_telemetry.py`). Continuous services are **scraped**, not
+  pushed. An empty pushgateway UI is not a bug; verify the path with a manual
+  `curl --data-binary @- .../metrics/job/<j>` then a Prometheus query.
 
 ## Locked architecture decisions
 

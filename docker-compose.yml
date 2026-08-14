@@ -22,6 +22,7 @@ volumes:
   redisdata:
   dbinitscratch:
   promdata:
+  pushgatewaydata:
   grafanadata:
   aimrepo:
   labelstudio:
@@ -66,14 +67,21 @@ services:
       openml.service: "postgres"
 
   minio:
-    image: minio/minio:latest
+    # pinned (was :latest) — reproducibility + protects the `mc ready local`
+    # healthcheck from silent admin-API changes in a future MinIO release.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: openml-minio
-    mem_limit: 2g
+    mem_limit: ${MINIO_MEM_LIMIT:-1g}
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      # expose Prometheus metrics unauthenticated on :9000/minio/v2/metrics/*
+      # (localhost-only platform; Prometheus scrapes the cluster/node endpoints)
+      MINIO_PROMETHEUS_AUTH_TYPE: "public"
+      MINIO_PROMETHEUS_URL: http://prometheus:9090
+      MINIO_PROMETHEUS_JOB_ID: minio
     ports:
       - "${BIND_HOST:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
       - "${BIND_HOST:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -92,8 +100,10 @@ services:
 
   # one-shot: create buckets, then exit
   minio-init:
-    image: minio/mc:latest
+    # pinned by digest (was :latest) for reproducible bucket provisioning
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     container_name: openml-minio-init
+    mem_limit: 256m
     depends_on:
       minio:
         condition: service_healthy
@@ -118,6 +128,7 @@ services:
   db-init:
     image: postgres:16-alpine
     container_name: openml-db-init
+    mem_limit: 256m
     depends_on:
       postgres:
         condition: service_healthy
@@ -281,7 +292,7 @@ services:
     container_name: openml-label-studio
     profiles: ["label"]
     restart: unless-stopped
-    mem_limit: ${LABELSTUDIO_MEM_LIMIT:-2g}
+    mem_limit: ${LABELSTUDIO_MEM_LIMIT:-1g}
     mem_reservation: 256m
     depends_on:
       postgres:
@@ -423,6 +434,8 @@ services:
       GITEA__server__DISABLE_SSH: "true"
       GITEA__service__DISABLE_REGISTRATION: "true"
       GITEA__actions__ENABLED: "true"
+      # built-in Prometheus metrics at :3000/metrics (scraped by the monitor stack)
+      GITEA__metrics__ENABLED: "true"
     ports:
       - "${BIND_HOST:-127.0.0.1}:${GITEA_PORT:-3001}:3000"
     volumes:
@@ -447,6 +460,7 @@ services:
   gitea-init:
     image: docker:27-cli
     container_name: openml-gitea-init
+    mem_limit: 256m
     profiles: ["cicd"]
     restart: "no"
     depends_on:
@@ -483,6 +497,7 @@ services:
       context: ./cicd/ci-runner
     image: openml/ci-runner:latest
     container_name: openml-ci-runner
+    mem_limit: 256m
     profiles: ["cicd"]
     restart: "no"
     command: ["true"]
@@ -578,9 +593,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    # --workers 2: MLflow's gunicorn otherwise spawns one worker PER CPU (10 on
+    # this VM), each loading the whole app → ~750MB idle. Two workers is plenty
+    # for a single-user server and cuts idle RAM by ~2-3x.
     command: >
       mlflow server
       --host 0.0.0.0 --port 5000
+      --workers 2
       --backend-store-uri postgresql://${POSTGRES_USER:-openml}:${POSTGRES_PASSWORD:-openml}@postgres:5432/mlflow
       --default-artifact-root s3://mlflow/
     environment:
@@ -617,10 +636,13 @@ services:
     volumes:
       - aimrepo:/aim
     networks: [openml_net]
+    # probe BOTH ports: the web UI (43800) AND the backgrounded tracking server
+    # (53800) that notebooks push to. Probing only the UI would report healthy
+    # even if the tracking server died and logging was silently broken.
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:43800/').status==200 else 1)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:43800/').status==200 else 1)\" && python -c \"import socket,sys; s=socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex(('localhost',53800))==0 else 1)\""]
       interval: 20s
-      timeout: 5s
+      timeout: 6s
       retries: 5
     labels:
       <<: *default-labels
@@ -707,6 +729,12 @@ services:
     ports:
       - "${BIND_HOST:-127.0.0.1}:${CADVISOR_PORT:-8082}:8080"
     networks: [openml_net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
     labels:
       <<: *default-labels
       openml.stack: "monitor"
@@ -747,6 +775,13 @@ services:
     mem_limit: 128m
     profiles: ["monitor"]
     restart: unless-stopped
+    # --persistence: keep pushed batch metrics across restarts so a crash mid-run
+    # doesn't silently drop them (they're still cleared explicitly on run exit).
+    command:
+      - --persistence.file=/data/pushgateway.store
+      - --persistence.interval=5m
+    volumes:
+      - pushgatewaydata:/data
     ports:
       - "${BIND_HOST:-127.0.0.1}:${PUSHGATEWAY_PORT:-9091}:9091"
     networks: [openml_net]
@@ -759,3 +794,77 @@ services:
       <<: *default-labels
       openml.stack: "monitor"
       openml.service: "pushgateway"
+
+  # --- exporters: give Prometheus real coverage of the core infra ------------
+  # These turn "6 targets" into full-platform monitoring. All in the monitor
+  # stack so they come up/down with Grafana+Prometheus.
+
+  # Postgres internals: connections, commits/rollbacks, deadlocks, DB sizes.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: openml-postgres-exporter
+    mem_limit: 128m
+    profiles: ["monitor"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-openml}:${POSTGRES_PASSWORD:-openml}@postgres:5432/${POSTGRES_DB:-openml}?sslmode=disable
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9187/metrics || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 4
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "postgres-exporter"
+
+  # Redis internals: memory, ops/sec, keyspace hits/misses, connected clients.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: openml-redis-exporter
+    mem_limit: 128m
+    profiles: ["monitor"]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks: [openml_net]
+    # NOTE: no healthcheck — the redis_exporter image is built FROM scratch (no
+    # shell, wget or any binary to probe with). Its liveness is tracked by the
+    # Prometheus `redis` target (up == 1) instead, which is the real signal.
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "redis-exporter"
+
+  # Blackbox: HTTP up/down + latency probes for every app that has no native
+  # Prometheus endpoint (mlflow, aim, zenml, jupyter, label-studio, playground,
+  # gitea, the console itself). This is what makes "the whole platform is
+  # monitored" true even for services that don't export their own metrics.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: openml-blackbox-exporter
+    mem_limit: 128m
+    profiles: ["monitor"]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./monitoring/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9115/-/healthy || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 4
+    labels:
+      <<: *default-labels
+      openml.stack: "monitor"
+      openml.service: "blackbox-exporter"
