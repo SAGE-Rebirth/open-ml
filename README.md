@@ -89,6 +89,17 @@ Turn on `cicd` (login `openml` / `openml-admin`). Push `cicd/demo-repo/` to a Gi
 repo and its `.gitea/workflows/train.yml` trains and **registers `ci-model` to MLflow**
 automatically. See [`docs/cicd.md`](docs/cicd.md).
 
+**Phase 5 — serving** (`serve` stack)
+
+| Service | Role | URL |
+|---|---|---|
+| **BentoML** inference | serves `models:/serve-demo@champion` from the registry | http://localhost:8000 |
+| **Gradio** playground | "test your endpoint" UI | http://localhost:7860 |
+
+Turn on `serve` (needs `track`): `curl -s localhost:8000/predict -d '{"inputs":[[5.1,3.5,1.4,0.2]]}'`
+→ `{"predictions":[0],"labels":["setosa"]}`. A raw-FastAPI example lives in
+`serving/fastapi/`. See [`docs/serving.md`](docs/serving.md).
+
 ## Secrets Vault
 
 The console has a built-in **🔐 Secrets Vault** — **multiple** named vaults, each

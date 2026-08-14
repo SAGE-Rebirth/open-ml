@@ -195,6 +195,8 @@ services:
       LABELSTUDIO_PORT: ${LABELSTUDIO_PORT:-8081}
       ZENML_PORT: ${ZENML_PORT:-8237}
       GITEA_PORT: ${GITEA_PORT:-3001}
+      INFERENCE_PORT: ${INFERENCE_PORT:-8000}
+      PLAYGROUND_PORT: ${PLAYGROUND_PORT:-7860}
     ports:
       - "${BIND_HOST:-127.0.0.1}:${DASHBOARD_PORT:-8080}:8080"
     volumes:
@@ -324,6 +326,71 @@ services:
       <<: *default-labels
       openml.stack: "label"
       openml.service: "label-studio"
+
+  # ==========================================================================
+  # SERVE  (profile: serve)  — SageMaker Endpoints / Vertex Endpoints
+  # ==========================================================================
+
+  # BentoML inference server — loads models:/serve-demo@champion from MLflow,
+  # serves POST /predict and Prometheus /metrics (scraped as the 'inference' job).
+  inference:
+    build:
+      context: ./serving/bentoml
+    image: openml/inference:latest
+    container_name: openml-inference
+    profiles: ["serve"]
+    restart: unless-stopped
+    mem_limit: ${INFERENCE_MEM_LIMIT:-1g}
+    # NOTE: no cross-profile depends_on (mlflow is in the `track` profile — a
+    # depends_on would make `up inference` fail unless track is also named).
+    # The Serve stack requires the Track stack to be on (see docs/serving.md).
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${INFERENCE_PORT:-8000}:8000"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+    labels:
+      <<: *default-labels
+      openml.stack: "serve"
+      openml.service: "inference"
+
+  # Gradio "test your endpoint" playground — calls the inference service.
+  playground:
+    build:
+      context: ./serving/gradio
+    image: openml/playground:latest
+    container_name: openml-playground
+    profiles: ["serve"]
+    restart: unless-stopped
+    mem_limit: ${PLAYGROUND_MEM_LIMIT:-512m}
+    depends_on:
+      inference:
+        condition: service_healthy
+    environment:
+      INFERENCE_URL: http://inference:8000
+      PLAYGROUND_PORT: "7860"
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PLAYGROUND_PORT:-7860}:7860"
+    networks: [openml_net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/').status==200 else 1)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    labels:
+      <<: *default-labels
+      openml.stack: "serve"
+      openml.service: "playground"
 
   # ==========================================================================
   # CICD  (profile: cicd)  — SageMaker Projects / Vertex CI  (Gitea + Actions)
