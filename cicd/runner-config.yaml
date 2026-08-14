@@ -16,4 +16,6 @@ container:
   force_pull: false
   # label the ephemeral job containers so they're identifiable as OpenML's
   # (they are created + destroyed per job by the runner — not compose services)
-  options: "--label openml.project=openml --label openml.stack=cicd-job"
+  # --memory/--cpus bound each job: a runaway training job OOM-kills only itself
+  # instead of exhausting the VM and taking down core services (postgres/minio).
+  options: "--memory=2g --cpus=2 --label openml.project=openml --label openml.stack=cicd-job"
