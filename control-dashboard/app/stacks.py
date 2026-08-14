@@ -98,10 +98,14 @@ STACKS = [
         ],
     },
     {
-        "key": "serve", "title": "Serve · FastAPI", "phase": 5,
-        "available": False, "always_on": False,
-        "description": "Real-time inference endpoint loading models from the registry.",
-        "services": ["inference"], "links": [],
+        "key": "serve", "title": "Serve · BentoML + Gradio", "phase": 5,
+        "available": True, "always_on": False,
+        "description": "Real-time inference endpoint (loads from the MLflow registry) + a Gradio playground.",
+        "services": ["inference", "playground"],
+        "links": [
+            {"label": "Inference API", "url": link("INFERENCE_PORT", "8000")},
+            {"label": "Playground", "url": link("PLAYGROUND_PORT", "7860")},
+        ],
     },
     {
         "key": "vision", "title": "Vision · Camera bridge", "phase": 6,
@@ -136,6 +140,8 @@ CONTAINER_NAME = {
     "zenml": "openml-zenml",
     "gitea": "openml-gitea",
     "act-runner": "openml-act-runner",
+    "inference": "openml-inference",
+    "playground": "openml-playground",
 }
 
 # One-shot setup/init jobs. These run once and exit(0) on success (like k8s
