@@ -46,12 +46,14 @@
   .shead{display:flex;align-items:center;gap:10px;margin:20px 0 6px}
   .shead h2{font-size:13px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0}
   .shead .rule{flex:1;height:1px;background:var(--line)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
-        gap:16px;align-items:start;padding:8px 0 4px}
+  /* masonry: cards keep their natural height but tile with no ragged gaps */
+  .grid{column-width:330px;column-gap:16px;padding:8px 0 4px}
 
   /* ---------- card ---------- */
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
-        box-shadow:var(--shadow);overflow:hidden}
+        box-shadow:var(--shadow);overflow:hidden;
+        break-inside:avoid;-webkit-column-break-inside:avoid;page-break-inside:avoid;
+        margin:0 0 16px}
   .card.on{border-color:#2b5138}
   .chead{padding:15px 16px 12px;display:flex;align-items:flex-start;gap:12px}
   .ctitlewrap{flex:1;min-width:0}
