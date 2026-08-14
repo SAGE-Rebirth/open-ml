@@ -1,0 +1,31 @@
+# OpenML — blackbox-exporter probe modules.
+# Prometheus passes a target URL; blackbox probes it and reports probe_success,
+# probe_duration_seconds, probe_http_status_code, etc. Used to monitor every
+# service that has no native Prometheus endpoint (mlflow, aim, zenml, jupyter,
+# label-studio, playground, gitea, the console).
+modules:
+  # Accept any non-5xx as "up" — several of these health/UI endpoints return
+  # 200/302/401/403 depending on auth, and we only care that the app is serving.
+  http_2xx_3xx_4xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: []          # empty = any 2xx; overridden below
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      method: GET
+      fail_if_not_ssl: false
+      preferred_ip_protocol: ip4
+
+  # Liveness: any HTTP response that isn't a 5xx means the process is serving.
+  http_alive:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200, 201, 204, 301, 302, 303, 307, 308, 401, 403]
+      method: GET
+      preferred_ip_protocol: ip4
+
+  # TCP connect probe (for non-HTTP services if ever needed).
+  tcp_connect:
+    prober: tcp
+    timeout: 5s

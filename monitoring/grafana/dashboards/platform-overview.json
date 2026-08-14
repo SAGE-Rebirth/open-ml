@@ -1,0 +1,172 @@
+{
+  "uid": "openml-platform",
+  "title": "OpenML · Platform Overview",
+  "tags": ["openml"],
+  "timezone": "browser",
+  "style": "dark",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {"from": "now-30m", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "id": 1, "type": "row", "title": "Service Health",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false, "panels": []
+    },
+    {
+      "id": 2, "type": "stat", "title": "Services up",
+      "gridPos": {"h": 6, "w": 4, "x": 0, "y": 1},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(probe_success)"}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "textMode": "value"}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Service status (probe_success)",
+      "gridPos": {"h": 6, "w": 14, "x": 4, "y": 1},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "probe_success", "legendFormat": "{{instance}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}], "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "auto"}
+    },
+    {
+      "id": 4, "type": "bargauge", "title": "HTTP latency (probe_duration_seconds)",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 1},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "probe_duration_seconds", "legendFormat": "{{instance}}"}],
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 2}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "displayMode": "gradient", "orientation": "horizontal"}
+    },
+    {
+      "id": 10, "type": "row", "title": "Resources",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+      "collapsed": false, "panels": []
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Container memory (stacked)",
+      "gridPos": {"h": 8, "w": 9, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_container_mem_bytes", "legendFormat": "{{service}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "stacking": {"mode": "normal"}}}, "overrides": []}
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Container CPU %",
+      "gridPos": {"h": 8, "w": 9, "x": 9, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "openml_container_cpu_percent", "legendFormat": "{{service}}"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []}
+    },
+    {
+      "id": 13, "type": "gauge", "title": "VM memory budget (used / total)",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "100 * openml_vm_mem_used_bytes / openml_vm_mem_bytes"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 20, "type": "row", "title": "Postgres",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+      "collapsed": false, "panels": []
+    },
+    {
+      "id": 21, "type": "timeseries", "title": "Active backends by db",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 17},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "pg_stat_database_numbackends", "legendFormat": "{{datname}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []}
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Commits & rollbacks /s",
+      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 17},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "sum(rate(pg_stat_database_xact_commit[5m]))", "legendFormat": "commits"},
+        {"refId": "B", "expr": "sum(rate(pg_stat_database_xact_rollback[5m]))", "legendFormat": "rollbacks"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []}
+    },
+    {
+      "id": 23, "type": "gauge", "title": "Cache hit ratio",
+      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 17},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(rate(pg_stat_database_blks_hit[5m])) / (sum(rate(pg_stat_database_blks_hit[5m])) + sum(rate(pg_stat_database_blks_read[5m])))"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.8}, {"color": "green", "value": 0.95}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 24, "type": "bargauge", "title": "Database size by db",
+      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 17},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "pg_database_size_bytes", "legendFormat": "{{datname}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "thresholds": {"steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "displayMode": "gradient", "orientation": "horizontal"}
+    },
+    {
+      "id": 30, "type": "row", "title": "Redis",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 24},
+      "collapsed": false, "panels": []
+    },
+    {
+      "id": 31, "type": "timeseries", "title": "Memory used",
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 25},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "redis_memory_used_bytes", "legendFormat": "used"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []}
+    },
+    {
+      "id": 32, "type": "timeseries", "title": "Ops/sec",
+      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 25},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "rate(redis_commands_processed_total[5m])", "legendFormat": "ops/s"}],
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []}
+    },
+    {
+      "id": 33, "type": "gauge", "title": "Keyspace hit ratio",
+      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 25},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.8}, {"color": "green", "value": 0.95}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 34, "type": "stat", "title": "Connected clients",
+      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 25},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "redis_connected_clients"}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area", "textMode": "value"}
+    },
+    {
+      "id": 40, "type": "row", "title": "MinIO / Object Store",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 32},
+      "collapsed": false, "panels": []
+    },
+    {
+      "id": 41, "type": "gauge", "title": "Usable capacity free %",
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 33},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "100 * minio_cluster_capacity_usable_free_bytes / minio_cluster_capacity_usable_total_bytes"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 15}, {"color": "green", "value": 30}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 42, "type": "bargauge", "title": "Bucket usage by bucket",
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 33},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "minio_bucket_usage_total_bytes", "legendFormat": "{{bucket}}"}],
+      "fieldConfig": {"defaults": {"unit": "bytes", "thresholds": {"steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "displayMode": "gradient", "orientation": "horizontal"}
+    },
+    {
+      "id": 43, "type": "stat", "title": "Objects by bucket",
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 33},
+      "datasource": {"type": "prometheus", "uid": "openml-prometheus"},
+      "targets": [{"refId": "A", "expr": "minio_bucket_usage_object_total", "legendFormat": "{{bucket}}"}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "textMode": "value_and_name"}
+    }
+  ]
+}

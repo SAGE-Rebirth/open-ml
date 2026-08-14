@@ -1,9 +1,16 @@
 # OpenML — Prometheus scrape config
+#
+# Coverage model:
+#   * Native exporters / built-in /metrics  -> scraped directly (rich metrics)
+#   * Everything else (apps with no metrics) -> blackbox HTTP up/down + latency
+# Targets in on-demand profiles (track/serve/pipeline/cicd/label) show as
+# "down" while that stack is off — that's accurate, not an error.
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
 scrape_configs:
+  # --- Prometheus + the monitor stack itself --------------------------------
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
@@ -26,14 +33,81 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # training/data/serving metrics pushed by notebooks & the inference service.
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+
+  # training/data/serving metrics pushed by notebooks & batch jobs.
   # honor_labels keeps the job/run labels the pushing code sets.
   - job_name: pushgateway
     honor_labels: true
     static_configs:
       - targets: ["pushgateway:9091"]
 
-  # FastAPI inference service (Phase 5) — harmless until it exists
+  # --- core infra exporters -------------------------------------------------
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # MinIO exposes Prometheus metrics natively (MINIO_PROMETHEUS_AUTH_TYPE=public)
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+  - job_name: minio-node
+    metrics_path: /minio/v2/metrics/node
+    static_configs:
+      - targets: ["minio:9000"]
+  - job_name: minio-bucket
+    metrics_path: /minio/v2/metrics/bucket
+    static_configs:
+      - targets: ["minio:9000"]
+
+  # --- app-native /metrics (only up when their stack is on) -----------------
+  # FastAPI/BentoML inference service (serve stack)
   - job_name: inference
     static_configs:
       - targets: ["inference:8000"]
+
+  # Gitea built-in metrics (cicd stack; GITEA__metrics__ENABLED=true)
+  - job_name: gitea
+    static_configs:
+      - targets: ["gitea:3000"]
+
+  # --- blackbox: HTTP up/down + latency for apps with no native metrics -----
+  # One job, many targets, via the blackbox exporter. probe_success{instance=…}
+  # is 1 when the app answers, 0 when it's down/unreachable.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_alive]
+    static_configs:
+      - targets:
+          - http://control-dashboard:8080/healthz
+          - http://mlflow:5000/health
+          - http://aim:43800/
+          - http://zenml:8080/health
+          - http://jupyter:8888/api
+          - http://label-studio:8080/health
+          - http://inference:8000/healthz
+          - http://playground:7860/
+          - http://gitea:3000/api/healthz
+          - http://grafana:3000/api/health
+          - http://prometheus:9090/-/healthy
+          - http://pushgateway:9091/-/healthy
+        labels:
+          openml: "true"
+    relabel_configs:
+      # pass the probe target as the ?target= param to blackbox
+      - source_labels: [__address__]
+        target_label: __param_target
+      # keep the human-readable target URL as the `instance` label
+      - source_labels: [__param_target]
+        target_label: instance
+      # point the scrape at the blackbox exporter itself
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
