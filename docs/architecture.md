@@ -12,9 +12,9 @@ single Apple Silicon machine using Docker Compose, plus a custom console.
 | Feature/data versioning | DVC (MinIO remote) | in `develop` |
 | Pipelines | ZenML | `pipeline` |
 | Experiments / tracking | MLflow + Aim | `track` |
-| Model Monitor / infra metrics | Prometheus + Grafana + cAdvisor + node-exporter + pushgateway | `monitor` |
+| Model Monitor / infra metrics | Prometheus + Grafana + cAdvisor + node-exporter + pushgateway + postgres/redis/blackbox exporters | `monitor` |
 | Projects / CI-CD | Gitea + Actions | `cicd` |
-| Endpoints (real-time inference) | FastAPI | `serve` |
+| Endpoints (real-time inference) | BentoML (+ Gradio playground) | `serve` |
 | Artifact store (S3) | MinIO | `core` |
 | Metadata DB | Postgres | `core` |
 | Message/frame bus | Redis | `core` |
@@ -32,11 +32,12 @@ restart while freeing its RAM).
 core     : control-dashboard, postgres, minio, redis      (always on)
 develop  : jupyter
 track    : mlflow, aim                                     (Phase 1)
-monitor  : prometheus, grafana, cadvisor, node-exporter, pushgateway  (Phase 1)
+monitor  : prometheus, grafana, cadvisor, node-exporter, pushgateway,
+           postgres-exporter, redis-exporter, blackbox-exporter    (Phase 1)
 label    : label-studio                                    (Phase 2)
 pipeline : zenml                                           (Phase 3)
 cicd     : gitea, act-runner                               (Phase 4)
-serve    : inference (FastAPI)                             (Phase 5)
+serve    : inference (BentoML) + playground (Gradio)       (Phase 5)
 vision   : frame-consumer (+ host-native camera bridge)   (Phase 6)
 ```
 

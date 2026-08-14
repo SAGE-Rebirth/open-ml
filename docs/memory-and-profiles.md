@@ -10,7 +10,7 @@ run only what you need, and watch the console's budget bar.
 | `core` *(always on)* | control-dashboard, postgres, minio, redis | ~0.5 GB |
 | `develop` | jupyter | ~0.4 GB |
 | `track` | mlflow, aim | ~0.45 GB |
-| `monitor` | prometheus, grafana, cadvisor, node-exporter, pushgateway | ~0.9 GB |
+| `monitor` | prometheus, grafana, cadvisor, node-exporter, pushgateway, postgres/redis/blackbox exporters | ~0.95 GB |
 | `label` | label-studio | ~0.6 GB |
 | `pipeline` | zenml | ~0.4 GB |
 | `cicd` | gitea, act-runner | ~0.35 GB |
@@ -19,6 +19,13 @@ run only what you need, and watch the console's budget bar.
 
 A comfortable everyday set is `core + develop + track + monitor` ≈ **2.3 GB
 idle**, leaving the rest of the VM for actual CPU training.
+
+> **MLflow is capped to 2 gunicorn workers** (`--workers 2`). Its default spawns
+> one worker per CPU (≈750 MB idle on a 10-CPU VM); two workers is plenty for a
+> single-user server and cuts its idle RAM to ~350 MB. `mem_limit` caps are
+> per-container blast-radius guards — their sum (~17.6 GB) intentionally
+> oversubscribes the ~7.75 GB VM because Compose profiles keep most stacks off.
+> Don't run every stack at once; watch the console's memory-budget bar.
 
 ## Suggested Docker Desktop settings
 

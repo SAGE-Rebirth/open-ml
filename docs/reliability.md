@@ -25,6 +25,16 @@ the trade-offs accepted for a single-machine personal platform.
 - **Console footguns removed** — it refuses to stop/restart *itself*, and core
   infra (postgres/minio/redis) is restart-only from the UI.
 - **Idempotent init** — `db-init` and `minio-init` are safe to re-run.
+- **Full-platform health visibility** — every long-running service has a
+  healthcheck (cAdvisor included). Services whose image is `FROM scratch` and
+  can't self-probe (e.g. `redis-exporter`) are instead tracked by their
+  Prometheus target (`up == 1`). Prometheus scrapes **25 targets** covering all
+  core infra (postgres/redis/minio exporters), the monitor stack, and a
+  blackbox HTTP up/down + latency probe for every app with no native `/metrics`
+  (mlflow, aim, zenml, jupyter, label-studio, playground, gitea, the console).
+- **API guards** — the console refuses to `stop` core infra (postgres/minio/
+  redis) or control unknown/injected service names, and escapes all user input
+  in the vault UI and the `/metrics` exporter.
 
 ## Known risks & accepted trade-offs
 
