@@ -88,6 +88,11 @@ Keep the recovery key or a backup and you're safe.
 - **Localhost trust:** once unlocked, any localhost caller can read (fine for a
   personal machine; the console is bound to `127.0.0.1`).
 - **Auto-unseal** stores a key file in the `vault` volume — convenient across
-  reboots, but the key lives on disk. Off by default.
+  reboots, but the key lives on disk (secrets are then effectively unencrypted at
+  rest to anyone who can read it). Off by default; the console now warns on enable
+  and shows a persistent banner while it's on.
+- **CSRF/DNS-rebind guard** — the vault API (like all mutating console routes)
+  rejects cross-origin browser writes and rebound hostnames, so a malicious page
+  you visit can't drive the vault even though it's unauthenticated on localhost.
 - Secrets survive restarts (encrypted in Postgres); the vault **re-seals** on
   restart unless auto-unseal is on.

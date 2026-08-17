@@ -34,7 +34,11 @@ the trade-offs accepted for a single-machine personal platform.
   (mlflow, aim, zenml, jupyter, label-studio, playground, gitea, the console).
 - **API guards** — the console refuses to `stop` core infra (postgres/minio/
   redis) or control unknown/injected service names, and escapes all user input
-  in the vault UI and the `/metrics` exporter.
+  in the vault UI and the `/metrics` exporter. State-changing requests are
+  protected against CSRF / DNS-rebinding: a mutating call is rejected (403)
+  unless its `Host` is an allowed host and any `Origin` is same-host (CLI callers
+  with no Origin pass; cross-origin browser POSTs and rebound hostnames don't).
+  Override the allowlist with `OPENML_ALLOWED_HOSTS` if you bind to a real host.
 
 ## Known risks & accepted trade-offs
 
