@@ -1,5 +1,6 @@
 # Local env / secrets
 .env
+.env.bak
 docker-compose.override.yml
 
 # Python
