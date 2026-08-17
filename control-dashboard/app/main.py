@@ -12,9 +12,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import time
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pathlib import Path
 
@@ -76,6 +78,54 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpenML Console", docs_url="/api/docs", lifespan=lifespan)
+
+
+# --------------------------------------------------------------------------- #
+# CSRF / DNS-rebinding guard
+# --------------------------------------------------------------------------- #
+# The console has no auth by design (localhost-only), but that does NOT protect
+# it from the browser: a malicious page you visit can fire cross-origin POSTs at
+# 127.0.0.1:8080 to drive docker, and a DNS-rebinding attack can make a foreign
+# hostname resolve to 127.0.0.1. So every STATE-CHANGING request must:
+#   * carry a Host header for an allowed host (blocks DNS rebinding — the
+#     rebound request arrives with the attacker's hostname), and
+#   * if it carries an Origin (i.e. it's a browser), that Origin's host must be
+#     allowed too (blocks cross-origin CORS "simple" POSTs).
+# CLI callers (curl, cli/openml-secret) send Host=localhost and no Origin — they
+# pass. Read-only GET/HEAD (SSE, /metrics, /api/stacks) are never blocked.
+_ALLOWED_HOSTS = {
+    h.strip().lower()
+    for h in os.environ.get("OPENML_ALLOWED_HOSTS", "localhost,127.0.0.1,::1").split(",")
+    if h.strip()
+}
+_MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _host_of(value: str) -> str:
+    """Hostname from a Host header ("localhost:8080") or an Origin URL
+    ("http://localhost:8080") — handles ports + IPv6 in both forms."""
+    try:
+        # Host headers have no scheme; give urlparse a netloc to work with.
+        parsed = urlparse(value if "://" in value else "//" + value)
+        return (parsed.hostname or "").lower()
+    except Exception:
+        return ""
+
+
+@app.middleware("http")
+async def _csrf_guard(request: Request, call_next):
+    if request.method in _MUTATING:
+        host = _host_of(request.headers.get("host", ""))
+        if host and host not in _ALLOWED_HOSTS:
+            return JSONResponse({"detail": f"host '{host}' not allowed"}, status_code=403)
+        origin = request.headers.get("origin")
+        if origin:
+            oh = _host_of(origin)
+            if oh not in _ALLOWED_HOSTS:
+                return JSONResponse(
+                    {"detail": "cross-origin request refused"}, status_code=403
+                )
+    return await call_next(request)
 
 
 # --------------------------------------------------------------------------- #

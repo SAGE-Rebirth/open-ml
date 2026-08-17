@@ -443,7 +443,8 @@ function vaultManage(v){
   return `<div class="vrow">
       <span class="vt" style="font-size:14px">🔓 ${esc(v.name)}</span>
       <button class="vbtn ghost" onclick="vaultLock(${v.id})">🔒 Lock</button>
-      <label class="switch ${v.auto_unseal?'on':''}" onclick="vaultAuto(${v.id},${!v.auto_unseal})"><i></i> auto-unlock</label></div>
+      <label class="switch ${v.auto_unseal?'on':''}" onclick="vaultAuto(${v.id},${!v.auto_unseal})" title="Writes a plaintext unlock key to disk so the vault self-unseals on restart — off = you unlock manually each boot"><i></i> auto-unlock</label></div>
+    ${v.auto_unseal?'<div class="vnote" style="color:var(--bad);margin-top:-4px">⚠ auto-unlock is ON — a plaintext key on disk can unseal this vault; secrets are effectively unencrypted at rest.</div>':''}
     <div class="vsub">Add secret</div>
     <div class="vrow">
       <input class="vin" id="v-name" placeholder="NAME e.g. OPENAI_API_KEY">
@@ -483,7 +484,9 @@ async function vaultDel(vid,scope,name){ if(!confirm(`Delete ${scope}/${name}?`)
 async function vaultAddCode(vid){ const label=document.getElementById('v-codelabel').value,code=document.getElementById('v-code').value; if(!code){toast('enter a code');return;} try{ await vjson('POST','/api/vault/'+vid+'/code',{label,code}); document.getElementById('v-code').value=''; toast('code added'); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
 async function vaultRmSlot(vid,id){ if(!confirm('Remove this unlock method?'))return; try{ await vjson('DELETE','/api/vault/'+vid+'/slot/'+id); toast('removed'); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
 async function vaultChangePw(vid){ try{ await vjson('POST','/api/vault/'+vid+'/passphrase',{new_passphrase:document.getElementById('v-chpw').value}); document.getElementById('v-chpw').value=''; toast('passphrase updated'); }catch(e){ toast('⚠ '+e.message); } }
-async function vaultAuto(vid,on){ try{ await vjson('POST','/api/vault/'+vid+'/auto-unseal',{enabled:on}); toast('auto-unlock '+(on?'on':'off')); loadVault(); }catch(e){ toast('⚠ '+e.message); } }
+async function vaultAuto(vid,on){
+  if(on && !confirm("Enable auto-unlock?\n\nThis writes a key that unwraps this vault's secrets to a plaintext file on disk (in the vault volume). The vault will then unseal itself on every restart with NO passphrase — convenient on your own machine, but it means the secrets are effectively unencrypted at rest to anyone who can read that file.\n\nLeave OFF if you'd rather unlock manually after each boot.")) return;
+  try{ await vjson('POST','/api/vault/'+vid+'/auto-unseal',{enabled:on}); toast('auto-unlock '+(on?'on':'off')); loadVault(); }catch(e){ toast('⚠ '+e.message); } }
 async function vaultLock(vid){ try{ await vjson('POST','/api/vault/'+vid+'/lock'); toast('locked'); loadVault(); }catch(e){} }
 async function vaultExport(vid){ const pw=prompt('Backup password (store it safely):'); if(!pw)return; if(pw.length<6){toast('too short');return;} try{ const r=await vjson('POST','/api/vault/'+vid+'/export',{password:pw}); const b=new Blob([r.backup],{type:'text/plain'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='openml-vault-backup.txt';a.click();URL.revokeObjectURL(u); toast('backup downloaded'); }catch(e){ toast('⚠ '+e.message); } }
 async function vaultImport(vid){ const backup=document.getElementById('v-imp').value.trim(),pw=document.getElementById('v-imppw').value; if(!backup||!pw){toast('paste backup + password');return;} try{ const r=await vjson('POST','/api/vault/'+vid+'/import',{password:pw,backup}); toast('restored '+r.imported); vaultLoadLists(vid); }catch(e){ toast('⚠ '+e.message); } }
